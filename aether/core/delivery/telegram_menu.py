@@ -248,7 +248,15 @@ class TelegramMenuService:
             await self._send_timeframes_menu()
 
     async def _route_models(self, action: Optional[str], model_name: Optional[str]) -> None:
-        if action == "promote" and model_name:
+        if action == "provider" and model_name:
+            await self._send_provider_models(model_name)
+        elif action in ("page", "choose") and model_name:
+            provider, _, value = model_name.partition(":")
+            if action == "page":
+                await self._send_provider_models(provider, int(value or 0))
+            else:
+                await self._select_provider_model(provider, int(value))
+        elif action == "prioritize" and model_name:
             await self._promote_model(model_name)
         elif action == "select_ollama" and model_name:
             await self._select_ollama_model(model_name)
@@ -347,26 +355,67 @@ class TelegramMenuService:
 
     async def _send_models_menu(self) -> None:
         chain = await self._get_model_chain()
-        keyboard = [
-            [{"text": f"Promote {model}", "callback_data": f"models:promote:{model}"}]
-            for model in chain
-        ]
-        available_local = []
-        if self.model_manager and hasattr(self.model_manager, "available_models"):
-            available_local = await self.model_manager.available_models("Ollama")
-        if available_local:
-            keyboard.extend([
-                [{"text": f"Use local {model}", "callback_data": f"models:select_ollama:{model}"}]
-                for model in available_local[:20]
-            ])
+        providers = []
+        if self.model_manager and hasattr(self.model_manager, "available_providers"):
+            providers = [name for name in self.model_manager.available_providers() if name != "Local"]
+        keyboard = [[{"text": f"Choose {name} model", "callback_data": f"models:provider:{name}"}]
+                    for name in providers]
+        keyboard.extend([[{"text": f"Prioritize {name}", "callback_data": f"models:prioritize:{name}"}]
+                         for name in chain if name != "Local"])
         keyboard.append([{"text": "⬅️ Back", "callback_data": "menu:main"}])
-        local_status = (
-            f"\nInstalled local models: {', '.join(available_local)}"
-            if available_local else "\nOllama unavailable or no local models installed."
-        )
         await self._send_text(
-            f"Model chain: {' -> '.join(chain)}{local_status}",
+            f"Model chain (first is tried first): {' -> '.join(chain)}\n"
+            "Choose a provider to select its actual model, or prioritize a provider in the failover order.",
             keyboard,
+        )
+
+    async def _send_provider_models(self, provider: str, page: int = 0) -> None:
+        if not self.model_manager or provider not in self.model_manager.available_providers():
+            await self._send_text("That model provider is not configured.", [[{"text": "Back", "callback_data": "menu:models"}]])
+            return
+        models = await self.model_manager.available_models(provider)
+        if not models:
+            await self._send_text(
+                f"No models are available for {provider}. Check its API key and provider access.",
+                [[{"text": "Back", "callback_data": "menu:models"}]],
+            )
+            return
+        page_size = 12
+        page_count = (len(models) + page_size - 1) // page_size
+        page = max(0, min(page, page_count - 1))
+        start = page * page_size
+        keyboard = []
+        for index, model in enumerate(models[start:start + page_size], start=start):
+            label = model if len(model) <= 48 else model[:45] + "..."
+            keyboard.append([{"text": label, "callback_data": f"models:choose:{provider}:{index}"}])
+        navigation = []
+        if page > 0:
+            navigation.append({"text": "Previous", "callback_data": f"models:page:{provider}:{page - 1}"})
+        if page + 1 < page_count:
+            navigation.append({"text": "Next", "callback_data": f"models:page:{provider}:{page + 1}"})
+        if navigation:
+            keyboard.append(navigation)
+        keyboard.append([{"text": "⬅️ Providers", "callback_data": "menu:models"}])
+        await self._send_text(f"Choose a {provider} model (page {page + 1}/{page_count}):", keyboard)
+
+    async def _select_provider_model(self, provider: str, index: int) -> None:
+        if not self.model_manager or provider not in self.model_manager.available_providers():
+            await self._send_text("That model provider is not configured.", [[{"text": "Back", "callback_data": "menu:models"}]])
+            return
+        models = await self.model_manager.available_models(provider)
+        if index < 0 or index >= len(models):
+            await self._send_text("That model choice expired. Please choose again.", [[{"text": "Back", "callback_data": f"models:provider:{provider}"}]])
+            return
+        model_name = models[index]
+        if provider == "Ollama":
+            await self._select_ollama_model(model_name)
+            return
+        await self.config.set(f"model_manager.models.{provider}", model_name)
+        chain = await self._get_model_chain()
+        await self.config.set("model_manager.chain", [provider] + [name for name in chain if name != provider])
+        await self._send_text(
+            f"Selected {model_name} for {provider} and prioritized it in the fallback chain.",
+            [[{"text": "Back", "callback_data": "menu:models"}]],
         )
 
     async def _select_ollama_model(self, model_name: str) -> None:

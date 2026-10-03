@@ -86,7 +86,7 @@ class ClaudeProvider(LLMProviderProtocol):
 
     async def stream(self, prompt: str) -> AsyncIterator[str]:
         key   = self._key()
-        model = os.environ.get("CLAUDE_MODEL", self._DEFAULT_MODEL)
+        model = getattr(self, "model_id", None) or os.environ.get("CLAUDE_MODEL", self._DEFAULT_MODEL)
         if not key:
             raise RuntimeError("CLAUDE_API_KEY not set")
         async with aiohttp.ClientSession() as s:
@@ -157,7 +157,7 @@ class OpenAIProvider(LLMProviderProtocol):
 
     async def stream(self, prompt: str) -> AsyncIterator[str]:
         key   = self._key()
-        model = os.environ.get("OPENAI_MODEL", self._DEFAULT_MODEL)
+        model = getattr(self, "model_id", None) or os.environ.get("OPENAI_MODEL", self._DEFAULT_MODEL)
         if not key:
             raise RuntimeError("OPENAI_API_KEY not set")
         async with aiohttp.ClientSession() as s:
@@ -192,7 +192,7 @@ class GeminiProvider(LLMProviderProtocol):
         return os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
 
     def _model(self) -> str:
-        return os.environ.get("GEMINI_MODEL", self._DEFAULT_MODEL)
+        return getattr(self, "model_id", None) or os.environ.get("GEMINI_MODEL", self._DEFAULT_MODEL)
 
     async def ping(self) -> bool:
         key = self._key()
@@ -293,7 +293,7 @@ class NVIDIAProvider(LLMProviderProtocol):
 
     async def stream(self, prompt: str) -> AsyncIterator[str]:
         key   = self._key()
-        model = os.environ.get("NVIDIA_MODEL", self._DEFAULT_MODEL)
+        model = getattr(self, "model_id", None) or os.environ.get("NVIDIA_MODEL", self._DEFAULT_MODEL)
         if not key:
             raise RuntimeError("NVIDIA_API_KEY not set")
         async with aiohttp.ClientSession() as s:
@@ -363,7 +363,7 @@ class OpenRouterProvider(LLMProviderProtocol):
 
     async def stream(self, prompt: str) -> AsyncIterator[str]:
         key   = self._key()
-        model = os.environ.get("OPENROUTER_MODEL", self._DEFAULT_MODEL)
+        model = getattr(self, "model_id", None) or os.environ.get("OPENROUTER_MODEL", self._DEFAULT_MODEL)
         if not key:
             raise RuntimeError("OPENROUTER_API_KEY not set")
         async with aiohttp.ClientSession() as s:
@@ -539,18 +539,26 @@ class ModelManager:
                 keyed_providers[name] = cls
             else:
                 logger.info("[ModelManager] %s has no API key – removed from chain", name)
+        configured_models = self._get_config("model_manager.models", {}) or {}
         self.providers = {}
         for name, cls in keyed_providers.items():
-            if name not in self.chain:
-                continue
-            self.providers[name] = cls(ollama_config) if name == "Ollama" else cls()
-        # Also trim the chain itself so generate() doesn't iterate over
-        # providers we know are unconfigured.
-        self.chain = [name for name in self.chain if name in self.providers]
-        if not self.chain:
-            # Always keep Local as a last-resort so the platform never hard-fails.
-            self.chain = ["Local"]
+            provider = cls(ollama_config) if name == "Ollama" else cls()
+            if name != "Ollama" and isinstance(configured_models, dict):
+                provider.model_id = configured_models.get(name)
+            self.providers[name] = provider
+        # Retain configured priority, then include any other credentialed providers
+        # as failovers, with Local as the final offline fallback.
+        configured_chain = [
+            name for name in self.chain
+            if name in self.providers and name != "Local"
+        ]
+        self.chain = configured_chain + [
+            name for name in self.DEFAULT_CHAIN
+            if name in self.providers and name not in configured_chain and name != "Local"
+        ]
+        if "Local" not in self.providers:
             self.providers["Local"] = LocalProvider()
+        self.chain.append("Local")
         logger.info("[ModelManager] chain: %s", self.chain)
 
     async def health(self) -> Dict[str, bool]:
@@ -574,12 +582,16 @@ class ModelManager:
         except Exception:
             return []
 
+    def available_providers(self) -> List[str]:
+        return [name for name in self.DEFAULT_CHAIN if name in self.providers]
+
     async def register_events(self, bus) -> None:
         await bus.subscribe("config_changed", self._on_config_changed)
 
     async def _on_config_changed(self, event: Dict[str, Any]) -> None:
         path = event.get("path", "")
-        if path == "model_manager.chain" or path.startswith("model_manager.ollama"):
+        if (path == "model_manager.chain" or path.startswith("model_manager.ollama")
+            or path.startswith("model_manager.models")):
             await self.reload_providers()
 
     async def reload_providers(self) -> None:
@@ -597,7 +609,7 @@ class ModelManager:
         try:
             if path == "model_manager.chain":
                 await self.reload_providers()
-            elif path.startswith("model_manager.ollama"):
+            elif path.startswith("model_manager.ollama") or path.startswith("model_manager.models"):
                 await self.reload_providers()
         except Exception as exc:
             logger.exception("[ModelManager] failed to apply config update: %s", exc)
