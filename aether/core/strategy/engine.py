@@ -12,7 +12,7 @@ from aether.core.data.normalizer import NormalizedCandle
 
 class StrategyRegistry:
     def __init__(self):
-        self._strategies: Dict[str, Strategy] = {}
+        self._strategies: Dict[str, Strategy] = {} 
 
     def register(self, strategy: Strategy):
         self._strategies[strategy.name] = strategy
