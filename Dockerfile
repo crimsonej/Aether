@@ -21,8 +21,8 @@ COPY data/ ./data/
 
 RUN pip install --no-cache-dir -e .
 
-EXPOSE 18791
+EXPOSE ${PORT:-18791}
 
 ENV PORT=18791
 
-CMD ["uvicorn", "aether.core.gateway.server:app", "--host", "0.0.0.0", "--port", "18791"]
+CMD uvicorn aether.core.gateway.server:app --host 0.0.0.0 --port ${PORT:-18791}

@@ -397,7 +397,10 @@ class OllamaProvider(LLMProviderProtocol):
 
     def __init__(self, config: Optional[Dict[str, Any]] = None):
         config = config or {}
-        self.base_url = str(config.get("base_url", "http://127.0.0.1:11434")).rstrip("/")
+        self.base_url = (
+            os.environ.get("OLLAMA_BASE_URL")
+            or str(config.get("base_url", "http://127.0.0.1:11434"))
+        ).rstrip("/")
         self.model = str(config.get("model", "" )).strip()
         self.keep_alive = config.get("keep_alive", "5m")
 
