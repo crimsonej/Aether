@@ -1,5 +1,6 @@
 """Telegram adapter – both inbound (via webhook) and outbound (signal sending)."""
 
+import asyncio
 import json
 import logging
 from typing import Dict, Any, Optional, List
@@ -40,6 +41,8 @@ class TelegramAdapter(AdapterProtocol):
         self.chat_id: Optional[str] = None
         self.webhook_secret: Optional[str] = None
         self.session: Optional[aiohttp.ClientSession] = None
+        self._polling_task: Optional[asyncio.Task] = None
+        self._polling_offset: Optional[int] = None
         self.base_url = "https://api.telegram.org"
 
     # -----------------------------------------------------------------
@@ -202,18 +205,18 @@ class TelegramAdapter(AdapterProtocol):
         except Exception:
             logger.exception("[TelegramAdapter] set_commands failed")
 
-        # Register the inbound webhook so Telegram knows where to POST updates
+        # Use a webhook when configured; otherwise receive updates over polling.
         if self.webhook_url:
             try:
                 await self.register_webhook()
             except Exception:
                 logger.exception("[TelegramAdapter] register_webhook failed")
         else:
-            logger.warning(
-                "[TelegramAdapter] no webhook_url set — inbound messages "
-                "won't reach the gateway. Add delivery.telegram.webhook_url "
-                "to aether.yaml (must be HTTPS, publicly reachable)."
-            )
+            if await self.delete_webhook():
+                self._polling_task = asyncio.create_task(self._poll_updates())
+                logger.info("[TelegramAdapter] Telegram long polling started")
+            else:
+                logger.error("[TelegramAdapter] could not clear webhook; polling was not started")
 
     async def send_startup_ping(self, data: Dict[str, Any] = None) -> bool:
         """Send a startup notification to the configured chat_id.
@@ -268,10 +271,49 @@ class TelegramAdapter(AdapterProtocol):
 
     async def stop(self) -> None:
         """Close the HTTP session."""
+        if self._polling_task and not self._polling_task.done():
+            self._polling_task.cancel()
+            try:
+                await self._polling_task
+            except asyncio.CancelledError:
+                pass
+            self._polling_task = None
         if self.session:
             await self.session.close()
             self.session = None
         logger.info("[TelegramAdapter] stopped")
+
+    async def close(self) -> None:
+        await self.stop()
+
+    async def _poll_updates(self) -> None:
+        """Receive Telegram updates for deployments without public webhook ingress."""
+        url = f"{self.base_url}/bot{self.token}/getUpdates"
+        while True:
+            try:
+                if self.session is None or self.session.closed:
+                    self.session = aiohttp.ClientSession()
+                params = {"timeout": 25, "allowed_updates": json.dumps(["message", "callback_query"])}
+                if self._polling_offset is not None:
+                    params["offset"] = self._polling_offset
+                async with self.session.get(
+                    url,
+                    params=params,
+                    timeout=aiohttp.ClientTimeout(total=35),
+                ) as response:
+                    payload = await response.json()
+                if not payload.get("ok"):
+                    logger.error("[TelegramAdapter] getUpdates failed: %s", payload.get("description"))
+                    await asyncio.sleep(3)
+                    continue
+                for update in payload.get("result", []):
+                    await self.receive_message(update)
+                    self._polling_offset = int(update["update_id"]) + 1
+            except asyncio.CancelledError:
+                raise
+            except (aiohttp.ClientError, asyncio.TimeoutError, ValueError, KeyError) as exc:
+                logger.warning("[TelegramAdapter] polling request failed: %s", exc)
+                await asyncio.sleep(3)
 
     async def set_commands(self, commands: List[Dict[str, str]]) -> bool:
         """

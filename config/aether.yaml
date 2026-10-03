@@ -67,8 +67,8 @@ delivery:
     - '6938668462'
     chat_id_env: TELEGRAM_CHAT_ID
     commands_registered: false
-    enabled: false
-    send_startup_ping: false
+    enabled: true
+    send_startup_ping: true
     token_env: TELEGRAM_BOT_TOKEN
   web:
     enabled: false
