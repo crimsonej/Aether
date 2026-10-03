@@ -188,6 +188,57 @@ async def metrics_endpoint():
 
 
 # ---------------------------------------------------------------------------
+# Trading endpoints
+# ---------------------------------------------------------------------------
+@app.get("/api/trading/account", response_class=JSONResponse)
+async def trading_account():
+    """Get paper trading account summary."""
+    order_manager = service_manager._subsystems.get("order_manager")
+    if not order_manager:
+        raise HTTPException(status_code=503, detail="Order manager not available")
+    return order_manager.instance.get_status()
+
+
+@app.get("/api/trading/positions", response_class=JSONResponse)
+async def trading_positions():
+    """Get all open positions with PnL."""
+    order_manager = service_manager._subsystems.get("order_manager")
+    if not order_manager or not order_manager.instance._broker:
+        raise HTTPException(status_code=503, detail="Broker not connected")
+    positions = order_manager.instance._broker.get_positions()
+    return {"positions": positions, "count": len(positions)}
+
+
+@app.get("/api/trading/history", response_class=JSONResponse)
+async def trading_history(limit: int = 100):
+    """Get trade history."""
+    order_manager = service_manager._subsystems.get("order_manager")
+    if not order_manager or not order_manager.instance._broker:
+        raise HTTPException(status_code=503, detail="Broker not connected")
+    history = order_manager.instance._broker.get_trade_history(limit)
+    return {"trades": history, "count": len(history)}
+
+
+@app.get("/api/trading/status", response_class=JSONResponse)
+async def trading_status():
+    """Get order execution manager status."""
+    order_manager = service_manager._subsystems.get("order_manager")
+    if not order_manager:
+        raise HTTPException(status_code=503, detail="Order manager not available")
+    return order_manager.instance.get_status()
+
+
+@app.post("/api/trading/close/{position_id}", dependencies=[Depends(require_admin)])
+async def close_position(position_id: str, volume: Optional[float] = None):
+    """Close a position (admin only)."""
+    order_manager = service_manager._subsystems.get("order_manager")
+    if not order_manager or not order_manager.instance._broker:
+        raise HTTPException(status_code=503, detail="Broker not connected")
+    result = await order_manager.instance._broker.close_position(position_id, volume)
+    return JSONResponse(result)
+
+
+# ---------------------------------------------------------------------------
 # Telegram inbound webhook
 # ---------------------------------------------------------------------------
 @app.post("/api/telegram/webhook")
@@ -270,6 +321,15 @@ async def health_page(request: Request):
         request=request,
         name="health.html",
         context={"health": health_data, "subsystems": subsystems},
+    )
+
+
+@app.get("/trading", response_class=HTMLResponse)
+async def trading_page(request: Request):
+    return templates.TemplateResponse(
+        request=request,
+        name="trading.html",
+        context={},
     )
 
 

@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Aether Trading Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #080c14;
+      --surface: #0e1421;
+      --surface2: #151d2e;
+      --border: #1e2d47;
+      --accent: #3b82f6;
+      --accent2: #6366f1;
+      --green: #22c55e;
+      --red: #ef4444;
+      --yellow: #eab308;
+      --text: #e2e8f0;
+      --muted: #64748b;
+      --radius: 12px;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; display: flex; }
+
+    .sidebar {
+      width: 220px; min-height: 100vh; background: var(--surface);
+      border-right: 1px solid var(--border); display: flex; flex-direction: column;
+      padding: 24px 0; position: fixed; left: 0; top: 0; bottom: 0;
+    }
+    .logo { padding: 0 24px 28px; font-size: 1.3rem; font-weight: 700;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      letter-spacing: -0.5px;
+    }
+    .nav-item { display: flex; align-items: center; gap: 10px; padding: 11px 24px;
+      color: var(--muted); text-decoration: none; font-size: 0.875rem; font-weight: 500;
+      transition: all 0.15s; border-left: 3px solid transparent;
+    }
+    .nav-item:hover, .nav-item.active { color: var(--text); background: var(--surface2); border-left-color: var(--accent); }
+    .nav-icon { font-size: 1rem; width: 18px; text-align: center; }
+    .nav-section { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1px;
+      color: var(--muted); padding: 16px 24px 6px; font-weight: 600;
+    }
+    .sidebar-footer { margin-top: auto; padding: 16px 24px; font-size: 0.75rem; color: var(--muted); }
+
+    .main { margin-left: 220px; flex: 1; padding: 32px; }
+    .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 32px; }
+    .page-title { font-size: 1.5rem; font-weight: 700; }
+    .ws-badge { display: flex; align-items: center; gap: 6px; font-size: 0.8rem; color: var(--muted); }
+    .ws-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--red); animation: pulse 2s infinite; }
+    .ws-dot.connected { background: var(--green); }
+    @keyframes pulse { 0%,100% { opacity:1 } 50% { opacity:.4 } }
+
+    .stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; margin-bottom: 28px; }
+    .stat-card {
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 20px 22px; transition: border-color 0.2s;
+    }
+    .stat-card:hover { border-color: var(--accent); }
+    .stat-label { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+    .stat-value { font-size: 1.8rem; font-weight: 700; letter-spacing: -0.5px; }
+    .stat-sub { font-size: 0.75rem; color: var(--muted); margin-top: 4px; }
+    .stat-ok { color: var(--green); }
+    .stat-err { color: var(--red); }
+    .stat-warn { color: var(--yellow); }
+
+    .panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; margin-bottom: 24px; }
+    .panel-header { padding: 16px 20px; border-bottom: 1px solid var(--border); font-weight: 600; font-size: 0.9rem;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .panel-header h3 { margin: 0; }
+    .btn { padding: 6px 12px; border: none; border-radius: 6px; font-size: 0.8rem; font-weight: 500; cursor: pointer; transition: opacity 0.2s; }
+    .btn:hover { opacity: 0.8; }
+    .btn-primary { background: var(--accent); color: white; }
+    .btn-danger { background: var(--red); color: white; }
+    .btn-sm { padding: 4px 8px; font-size: 0.7rem; }
+
+    table { width: 100%; border-collapse: collapse; }
+    th { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.8px; color: var(--muted);
+      padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border);
+    }
+    td { padding: 10px 16px; font-size: 0.82rem; border-bottom: 1px solid rgba(30,45,71,0.5); }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: var(--surface2); }
+    .badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px;
+      border-radius: 20px; font-size: 0.72rem; font-weight: 600; letter-spacing: 0.3px;
+    }
+    .badge-ok { background: rgba(34,197,94,0.12); color: var(--green); }
+    .badge-err { background: rgba(239,68,68,0.12); color: var(--red); }
+    .badge-warn { background: rgba(234,179,8,0.12); color: var(--yellow); }
+    .badge-idle { background: rgba(100,116,139,0.15); color: var(--muted); }
+    .badge-buy { background: rgba(34,197,94,0.12); color: var(--green); }
+    .badge-sell { background: rgba(239,68,68,0.12); color: var(--red); }
+    .profit-positive { color: var(--green); font-weight: 600; }
+    .profit-negative { color: var(--red); font-weight: 600; }
+
+    .empty-state { padding: 40px; text-align: center; color: var(--muted); }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 6px; height: 6px; } ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+    /* Modal */
+    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: none; align-items: center; justify-content: center; z-index: 100; }
+    .modal-overlay.open { display: flex; }
+    .modal { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px; min-width: 320px; max-width: 90vw; }
+    .modal h3 { margin-bottom: 16px; }
+    .modal-actions { display: flex; gap: 12px; justify-content: flex-end; margin-top: 16px; }
+  </style>
+</head>
+<body>
+
+<nav class="sidebar">
+  <div class="logo">⚡ Aether</div>
+  <div class="nav-section">Platform</div>
+  <a href="/" class="nav-item"><span class="nav-icon">🏠</span> Dashboard</a>
+  <a href="/signals" class="nav-item"><span class="nav-icon">📡</span> Signals</a>
+  <a href="/strategies" class="nav-item"><span class="nav-icon">🎯</span> Strategies</a>
+  <div class="nav-section">Trading</div>
+  <a href="/trading" class="nav-item active"><span class="nav-icon">💰</span> Positions</a>
+  <a href="/trading/history" class="nav-item"><span class="nav-icon">📜</span> History</a>
+  <div class="nav-section">System</div>
+  <a href="/config" class="nav-item"><span class="nav-icon">⚙️</span> Config</a>
+  <a href="/health-dashboard" class="nav-item"><span class="nav-icon">❤️</span> Health</a>
+  <div class="sidebar-footer">Paper Trading Mode</div>
+</nav>
+
+<main class="main">
+  <div class="topbar">
+    <h1 class="page-title">Trading Dashboard</h1>
+    <div class="ws-badge">
+      <div class="ws-dot" id="ws-dot"></div>
+      <span id="ws-label">Connecting…</span>
+    </div>
+  </div>
+
+  <!-- Account Stats -->
+  <div class="stats-grid">
+    <div class="stat-card">
+      <div class="stat-label">Balance</div>
+      <div class="stat-value" id="balance">—</div>
+      <div class="stat-sub">Cash available</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Equity</div>
+      <div class="stat-value" id="equity">—</div>
+      <div class="stat-sub">Balance + Unrealized PnL</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Free Margin</div>
+      <div class="stat-value" id="free-margin">—</div>
+      <div class="stat-sub">Available for new trades</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Margin Level</div>
+      <div class="stat-value" id="margin-level">—</div>
+      <div class="stat-sub">Equity / Used Margin %</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Open Positions</div>
+      <div class="stat-value" id="open-positions">—</div>
+      <div class="stat-sub" id="max-positions">/ 5 max</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Unrealized PnL</div>
+      <div class="stat-value" id="unrealized-pnl">—</div>
+      <div class="stat-sub">Floating profit/loss</div>
+    </div>
+  </div>
+
+  <!-- Order Manager Status -->
+  <div class="panel">
+    <div class="panel-header">
+      <h3>🤖 Order Execution Manager</h3>
+      <div style="display:flex;gap:8px;align-items:center">
+        <span id="om-status" class="badge badge-idle">Unknown</span>
+        <span id="broker-status" class="badge badge-idle">Broker: Disconnected</span>
+      </div>
+    </div>
+    <table>
+      <thead>
+        <tr><th>Metric</th><th>Value</th></tr>
+      </thead>
+      <tbody id="om-stats-body">
+        <tr><td colspan="2" class="empty-state">Loading…</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Open Positions -->
+  <div class="panel">
+    <div class="panel-header">
+      <h3>📊 Open Positions</h3>
+    </div>
+    <div style="overflow-x:auto">
+      <table>
+        <thead>
+          <tr>
+            <th>Symbol</th><th>Dir</th><th>Volume</th><th>Entry</th><th>Current</th>
+            <th>SL</th><th>TP</th><th>Unrealized PnL</th><th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="positions-body">
+          <tr><td colspan="9" class="empty-state">No open positions</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Trade History -->
+  <div class="panel">
+    <div class="panel-header">
+      <h3>📜 Recent Trade History</h3>
+    </div>
+    <div style="overflow-x:auto">
+      <table>
+        <thead>
+          <tr>
+            <th>Time</th><th>Symbol</th><th>Dir</th><th>Volume</th><th>Price</th>
+            <th>Type</th><th>Commission</th><th>Profit</th>
+          </tr>
+        </thead>
+        <tbody id="history-body">
+          <tr><td colspan="8" class="empty-state">No trades yet</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Close Position Modal -->
+  <div class="modal-overlay" id="close-modal">
+    <div class="modal">
+      <h3>Close Position</h3>
+      <p>Close position <strong id="modal-position-id"></strong> (<span id="modal-symbol"></span>)?</p>
+      <div style="margin:16px 0">
+        <label style="display:block;margin-bottom:4px;font-size:.85rem">Volume (leave empty for full close)</label>
+        <input type="number" step="0.01" id="modal-volume" style="width:100%;padding:8px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text)">
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-danger" onclick="confirmClose()">Close Position</button>
+        <button class="btn" onclick="closeModal()">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+let currentPositions = {};
+let closePositionId = null;
+
+// ── Fetch trading data ──────────────────────────────────────────────────
+async function fetchTradingData() {
+  try {
+    const [accountRes, positionsRes, historyRes, statusRes] = await Promise.all([
+      fetch('/api/trading/account'),
+      fetch('/api/trading/positions'),
+      fetch('/api/trading/history?limit=50'),
+      fetch('/api/trading/status'),
+    ]);
+
+    if (accountRes.ok) {
+      const account = await accountRes.json();
+      updateAccount(account);
+    }
+    if (positionsRes.ok) {
+      const data = await positionsRes.json();
+      updatePositions(data.positions || []);
+    }
+    if (historyRes.ok) {
+      const data = await historyRes.json();
+      updateHistory(data.trades || []);
+    }
+    if (statusRes.ok) {
+      const status = await statusRes.json();
+      updateOrderManagerStatus(status);
+    }
+  } catch (e) {
+    console.warn('Trading data fetch failed', e);
+  }
+}
+
+function updateAccount(account) {
+  document.getElementById('balance').textContent = '$' + account.balance.toLocaleString(undefined, {minimumFractionDigits: 2});
+  document.getElementById('equity').textContent = '$' + account.equity.toLocaleString(undefined, {minimumFractionDigits: 2});
+  document.getElementById('free-margin').textContent = '$' + account.free_margin.toLocaleString(undefined, {minimumFractionDigits: 2});
+  document.getElementById('margin-level').textContent = account.margin_level.toFixed(1) + '%';
+  document.getElementById('open-positions').textContent = account.open_positions;
+  document.getElementById('unrealized-pnl').textContent = '$' + (account.equity - account.balance).toLocaleString(undefined, {minimumFractionDigits: 2});
+  document.getElementById('unrealized-pnl').className = 'stat-value ' + (account.equity >= account.balance ? 'profit-positive' : 'profit-negative');
+}
+
+function updateOrderManagerStatus(status) {
+  const running = status.running;
+  document.getElementById('om-status').textContent = running ? 'Running' : 'Stopped';
+  document.getElementById('om-status').className = 'badge ' + (running ? 'badge-ok' : 'badge-idle');
+  
+  document.getElementById('broker-status').textContent = 'Broker: ' + (status.broker_connected ? 'Connected' : 'Disconnected');
+  document.getElementById('broker-status').className = 'badge ' + (status.broker_connected ? 'badge-ok' : 'badge-err');
+
+  const tbody = document.getElementById('om-stats-body');
+  tbody.innerHTML = `
+    <tr><td>Risk/Trade</td><td>${status.risk_profile.risk_per_trade}%</td></tr>
+    <tr><td>Max Positions</td><td>${status.risk_profile.max_positions}</td></tr>
+    <tr><td>Max Portfolio Heat</td><td>${status.risk_profile.max_heat}%</td></tr>
+    <tr><td>Active Signals</td><td>${status.active_signals}</td></tr>
+    <tr><td>Pending Orders</td><td>${status.pending_orders}</td></tr>
+    <tr><td>Account Size</td><td>$${status.risk_profile.account_size.toLocaleString()}</td></tr>
+  `;
+}
+
+function updatePositions(positions) {
+  const tbody = document.getElementById('positions-body');
+  currentPositions = {};
+  
+  if (positions.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="9" class="empty-state">No open positions</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = positions.map(pos => {
+    currentPositions[pos.position_id] = pos;
+    const dir = pos.direction;
+    const dirClass = dir === 'BUY' ? 'badge-buy' : 'badge-sell';
+    const pnl = pos.profit || 0;
+    const pnlClass = pnl >= 0 ? 'profit-positive' : 'profit-negative';
+    const pnlSign = pnl >= 0 ? '+' : '';
+    
+    return `
+      <tr data-position-id="${pos.position_id}">
+        <td><strong>${pos.symbol}</strong></td>
+        <td><span class="badge ${dirClass}">${dir}</span></td>
+        <td>${pos.volume.toFixed(2)}</td>
+        <td>${pos.entry_price.toFixed(5)}</td>
+        <td>${pos.current_price ? pos.current_price.toFixed(5) : '—'}</td>
+        <td>${pos.sl ? pos.sl.toFixed(5) : '—'}</td>
+        <td>${pos.tp ? pos.tp.toFixed(5) : '—'}</td>
+        <td class="${pnlClass}">${pnlSign}$${pnl.toFixed(2)}</td>
+        <td><button class="btn btn-danger btn-sm" onclick="openCloseModal('${pos.position_id}', '${pos.symbol}')">Close</button></td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function updateHistory(trades) {
+  const tbody = document.getElementById('history-body');
+  
+  if (trades.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No trades yet</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = trades.slice().reverse().map(trade => {
+    const dir = trade.direction;
+    const dirClass = dir === 'BUY' ? 'badge-buy' : 'badge-sell';
+    const type = trade.type;
+    const profit = trade.profit || 0;
+    const profitClass = profit >= 0 ? 'profit-positive' : 'profit-negative';
+    const profitSign = profit >= 0 ? '+' : '';
+    const time = new Date(trade.timestamp).toLocaleString();
+    
+    return `
+      <tr>
+        <td>${time}</td>
+        <td><strong>${trade.symbol}</strong></td>
+        <td><span class="badge ${dirClass}">${dir}</span></td>
+        <td>${trade.volume.toFixed(2)}</td>
+        <td>${trade.price.toFixed(5)}</td>
+        <td>${type}</td>
+        <td>$${trade.commission.toFixed(2)}</td>
+        <td class="${profitClass}">${profitSign}$${profit.toFixed(2)}</td>
+      </tr>
+    `;
+  }).join('');
+}
+
+// ── Modal for closing positions ─────────────────────────────────────────
+function openCloseModal(positionId, symbol) {
+  closePositionId = positionId;
+  document.getElementById('modal-position-id').textContent = positionId;
+  document.getElementById('modal-symbol').textContent = symbol;
+  document.getElementById('modal-volume').value = '';
+  document.getElementById('close-modal').classList.add('open');
+}
+
+function closeModal() {
+  closePositionId = null;
+  document.getElementById('close-modal').classList.remove('open');
+}
+
+async function confirmClose() {
+  if (!closePositionId) return;
+  const volume = document.getElementById('modal-volume').value;
+  const vol = volume ? parseFloat(volume) : null;
+  
+  try {
+    const res = await fetch(`/api/trading/close/${closePositionId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ volume: vol }),
+    });
+    const result = await res.json();
+    if (result.success) {
+      alert('Position closed successfully');
+      closeModal();
+      fetchTradingData(); // Refresh
+    } else {
+      alert('Failed to close: ' + (result.error || 'unknown'));
+    }
+  } catch (e) {
+    alert('Error: ' + e.message);
+  }
+}
+
+// ── WebSocket ─────────────────────────────────────────────────────────────
+function connectWS() {
+  const ws = new WebSocket(`ws://${location.host}/ws`);
+  const dot = document.getElementById('ws-dot');
+  const lbl = document.getElementById('ws-label');
+
+  ws.onopen = () => { dot.classList.add('connected'); lbl.textContent = 'Live'; };
+  ws.onclose = () => {
+    dot.classList.remove('connected'); lbl.textContent = 'Reconnecting…';
+    setTimeout(connectWS, 3000);
+  };
+  ws.onerror = () => { dot.classList.remove('connected'); };
+}
+
+fetchTradingData();
+setInterval(fetchTradingData, 5000);
+connectWS();
+
+// Close modal on overlay click
+document.getElementById('close-modal').addEventListener('click', (e) => {
+  if (e.target.id === 'close-modal') closeModal();
+});
+</script>
+</body>
+</html>

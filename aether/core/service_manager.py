@@ -163,6 +163,7 @@ class ServiceManager:
         from .model_manager import ModelManager
         from .adapters.registry import AdapterRegistry
         from .metrics.exporter import MetricsExporter
+        from .order_manager import OrderExecutionManager
         
         from .agent import AetherAgent
         from .security.permission import PermissionEngine
@@ -234,6 +235,9 @@ class ServiceManager:
         retry._adapter_registry = adapters  # Avoid double instantiation
         
         delivery = DeliveryManager(self.config, self.bus)
+        
+        # Order Execution Manager (signal -> risk -> broker)
+        order_manager = OrderExecutionManager(self.config, self.bus)
 
         # Telegram menu service (operator UX)
         from .delivery.telegram_menu import TelegramMenuService
@@ -257,6 +261,7 @@ class ServiceManager:
             "adapters": adapters,
             "retry": retry,
             "delivery": delivery,
+            "order_manager": order_manager,
             "health": health,
             "metrics": metrics,
         }
@@ -301,6 +306,22 @@ class ServiceManager:
         retry = self._subsystems.get("retry")
         if delivery and adapters and retry:
             await delivery.instance.setup(adapters.instance, retry.instance)
+
+        # Wire OrderExecutionManager to broker adapter
+        order_manager = self._subsystems.get("order_manager")
+        if order_manager and adapters:
+            # Wait a bit for adapters to load, then connect broker
+            async def connect_broker():
+                await asyncio.sleep(1)  # Give adapters time to load
+                try:
+                    broker = adapters.instance.get("paper_broker")
+                    order_manager.instance.set_broker(broker)
+                    logger.info("[ServiceManager] order_manager connected to paper_broker")
+                except KeyError:
+                    logger.warning("[ServiceManager] paper_broker adapter not enabled")
+                except Exception as e:
+                    logger.exception("[ServiceManager] failed to connect order_manager to broker: %s", e)
+            asyncio.create_task(connect_broker())
 
         # Bind platform transports to AetherAgent's conversational responses.
         agent = self._subsystems.get("agent")

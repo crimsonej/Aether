@@ -1,5 +1,19 @@
 schema_version: 1
 
+watchlist:
+  - BTCUSD
+  - ETHUSD
+  - SOLUSD
+
+model_manager:
+  chain:
+    - Ollama
+    - Local
+  ollama:
+    enabled: true
+    model: "nemotron-3-ultra:cloud"
+    base_url: "http://127.0.0.1:11434"
+
 data:
   oanda:
     api_key_env: OANDA_API_KEY
@@ -7,10 +21,10 @@ data:
     base_url: "https://api-fxtrade.oanda.com"
   fallback: null
   provider_chain:
+    - CoinGecko
     - Yahoo
-    - AlphaVantage
     - TwelveData
-    - Oanda
+    - AlphaVantage
 
 context:
   adx_threshold: 22
@@ -60,3 +74,4 @@ ops:
   health_check_interval: 300
   auto_restart: true
   anomaly_detection: true
+

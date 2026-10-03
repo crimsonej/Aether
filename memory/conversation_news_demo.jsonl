@@ -1,0 +1,3 @@
+{"role": "user", "text": "Search recent news for Bitcoin", "timestamp": 38362.327274215}
+{"role": "user", "text": "Search recent news for Bitcoin", "timestamp": 38382.942200577}
+{"role": "assistant", "text": "{\n  \"results\": [\n    {\n      \"title\": \"here\",\n      \"url\": \"https://duckduckgo.com/\"\n    }\n  ]\n}", "timestamp": 38387.405594517}

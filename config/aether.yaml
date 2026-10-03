@@ -1,4 +1,37 @@
-config_version: 12
+alerts:
+  news:
+    enabled: false
+    lead_minutes: 60
+    minimum_impact: high
+    pairs: []
+    poll_interval_seconds: 300
+    source_candidates:
+    - https://nfs.faireconomy.media/ff_calendar_thisweek.json?version=aeceb15b7cc6540e3b9b210d81a0d39a
+    - https://nfs.faireconomy.media/ff_calendar_thisweek.csv?version=aeceb15b7cc6540e3b9b210d81a0d39a
+    - https://nfs.faireconomy.media/ff_calendar_thisweek.xml?version=aeceb15b7cc6540e3b9b210d81a0d39a
+    source_timezone: America/New_York
+    source_url: https://nfs.faireconomy.media/ff_calendar_thisweek.json?version=aeceb15b7cc6540e3b9b210d81a0d39a
+  price:
+  - condition: above
+    enabled: true
+    id: 8ed6a80b2010
+    price: 90000.0
+    symbol: BTCUSD
+  - condition: above
+    enabled: true
+    id: 2dee85310d6f
+    price: 86000.0
+    symbol: BTCUSD
+broker:
+  paper_broker:
+    account_size: 10000.0
+    commission_per_lot: 0.0
+    data_dir: data/paper_broker
+    enabled: true
+    leverage: 30
+    slippage_pips: 0.0
+    spread_markup_pips: 0.0
+config_version: 24
 context:
   adx_threshold: 25
   atr_percentiles:
@@ -8,7 +41,7 @@ context:
   atr_period: 14
 data:
   poll_count: 80
-  poll_interval: 60
+  poll_interval: 120
   provider_chain:
   - Yahoo
   - Frankfurter
@@ -22,9 +55,9 @@ data:
       enabled: true
   request_stagger_seconds: 2
   timeframes:
-  - 5m
   - 15m
   - 1h
+  - 4h
 delivery:
   discord:
     enabled: false
@@ -53,34 +86,26 @@ features:
   - rsi
   - macd
   - atr
-alerts:
-  price: []
-  news:
-    enabled: false
-    pairs: []
-    minimum_impact: high
-    source_url: https://nfs.faireconomy.media/ff_calendar_thisweek.json?version=aeceb15b7cc6540e3b9b210d81a0d39a
-    source_timezone: America/New_York
-    poll_interval_seconds: 300
-    lead_minutes: 60
-    source_candidates:
-    - https://nfs.faireconomy.media/ff_calendar_thisweek.json?version=aeceb15b7cc6540e3b9b210d81a0d39a
-    - https://nfs.faireconomy.media/ff_calendar_thisweek.csv?version=aeceb15b7cc6540e3b9b210d81a0d39a
-    - https://nfs.faireconomy.media/ff_calendar_thisweek.xml?version=aeceb15b7cc6540e3b9b210d81a0d39a
 model_manager:
   chain:
   - Ollama
   - Local
   ollama:
-    enabled: true
     base_url: http://127.0.0.1:11434
-    model: nemotron-3-super:cloud
+    enabled: true
     keep_alive: 5m
+    model: nemotron-3-ultra:cloud
 ops:
   anomaly_detection: true
   auto_restart: true
   health_check_interval: 300
 providers: []
+risk:
+  account_size: 10000.0
+  max_daily_risk_percent: 3.0
+  max_open_positions: 5
+  max_portfolio_heat: 5.0
+  risk_per_trade_percent: 1.0
 schema_version: 1
 signal:
   mode: signal_only
@@ -88,8 +113,11 @@ signal:
   profile: general
 strategies:
 - config_path: config/strategies/trend_following_v1.yaml
-  enabled: false
+  enabled: true
   name: trend_following_v1
+trading:
+  default_volume: 0.1
+  max_volume_per_trade: 1.0
 validation:
   cooldown:
     high_volatility: 20
@@ -97,4 +125,16 @@ validation:
     normal_volatility: 15
   max_spread_multiplier: 1.5
   min_confidence: 55
-watchlist: []
+watchlist:
+- EURUSD
+- GBPUSD
+- USDJPY
+- AUDUSD
+- USDCAD
+- EURGBP
+- EURJPY
+- GBPJPY
+- XAUUSD
+- BTCUSD
+- SOLUSD
+- ETHUSD

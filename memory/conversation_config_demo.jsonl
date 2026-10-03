@@ -1,0 +1,8 @@
+{"role": "user", "text": "Add ETHUSD to my watchlist", "timestamp": 37467.504702863}
+{"role": "assistant", "text": "\u2705 Capability 'add_symbol' completed.", "timestamp": 37471.843381133}
+{"role": "user", "text": "Enable RSI indicator", "timestamp": 37472.844148234}
+{"role": "assistant", "text": "\u2705 Capability 'set_indicator' completed.", "timestamp": 37474.681133614}
+{"role": "user", "text": "Add price alert for BTCUSD when price goes above 90000", "timestamp": 37475.682106873}
+{"role": "assistant", "text": "\u2705 Price alert 8ed6a80b2010 set: BTCUSD above 90000.", "timestamp": 37481.011670537}
+{"role": "user", "text": "Show me my current watchlist", "timestamp": 37482.01317152}
+{"role": "assistant", "text": "{\n  \"watchlist\": [\n    \"EURUSD\",\n    \"GBPUSD\",\n    \"USDJPY\",\n    \"AUDUSD\",\n    \"USDCAD\",\n    \"EURGBP\",\n    \"EURJPY\",\n    \"GBPJPY\",\n    \"XAUUSD\",\n    \"BTCUSD\",\n    \"SOLUSD\",\n    \"ETHUSD\"\n  ]\n}", "timestamp": 37483.286539319}

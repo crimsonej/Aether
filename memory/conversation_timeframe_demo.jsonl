@@ -1,0 +1,2 @@
+{"role": "user", "text": "Add price alert for BTCUSD when price goes above 86000", "timestamp": 39493.237700027}
+{"role": "assistant", "text": "\u2705 Price alert 2dee85310d6f set: BTCUSD above 86000.", "timestamp": 39496.340798579}
