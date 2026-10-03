@@ -17,7 +17,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY pyproject.toml .
 COPY aether/ ./aether/
 COPY config/ ./config/
-COPY data/ ./data/
+RUN mkdir -p data
 
 RUN pip install --no-cache-dir -e .
 
@@ -25,4 +25,4 @@ EXPOSE ${PORT:-18791}
 
 ENV PORT=18791
 
-CMD uvicorn aether.core.gateway.server:app --host 0.0.0.0 --port ${PORT:-18791}
+CMD ["sh", "-c", "uvicorn aether.core.gateway.server:app --host 0.0.0.0 --port ${PORT:-18791}"]
