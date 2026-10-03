@@ -1,0 +1,12 @@
+operator:
+  allowed_actions:
+    - add_symbol
+    - remove_symbol
+    - enable_platform
+    - disable_platform
+    - set_indicator
+    - set_strategy_param
+
+admin:
+  allowed_actions:
+    - "*"

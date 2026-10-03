@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Configuration – Aether</title>
+  <meta name="description" content="Live YAML configuration editor for the Aether platform" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    :root{--bg:#080c14;--surface:#0e1421;--surface2:#151d2e;--border:#1e2d47;--accent:#3b82f6;--accent2:#6366f1;--green:#22c55e;--red:#ef4444;--yellow:#eab308;--text:#e2e8f0;--muted:#64748b;--radius:12px}
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex}
+    .sidebar{width:220px;min-height:100vh;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:24px 0;position:fixed;left:0;top:0;bottom:0}
+    .logo{padding:0 24px 28px;font-size:1.3rem;font-weight:700;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+    .nav-item{display:flex;align-items:center;gap:10px;padding:11px 24px;color:var(--muted);text-decoration:none;font-size:.875rem;font-weight:500;transition:all .15s;border-left:3px solid transparent}
+    .nav-item:hover,.nav-item.active{color:var(--text);background:var(--surface2);border-left-color:var(--accent)}
+    .nav-section{font-size:.7rem;text-transform:uppercase;letter-spacing:1px;color:var(--muted);padding:16px 24px 6px;font-weight:600}
+    .sidebar-footer{margin-top:auto;padding:16px 24px;font-size:.75rem;color:var(--muted)}
+    .main{margin-left:220px;flex:1;padding:32px;display:flex;flex-direction:column}
+    .topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:28px}
+    .page-title{font-size:1.5rem;font-weight:700}
+    .toolbar{display:flex;gap:10px}
+    .btn{padding:8px 18px;border-radius:8px;border:none;font-family:inherit;font-size:.85rem;font-weight:600;cursor:pointer;transition:all .15s}
+    .btn-primary{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff}
+    .btn-primary:hover{opacity:.85}
+    .btn-secondary{background:var(--surface2);color:var(--text);border:1px solid var(--border)}
+    .btn-secondary:hover{border-color:var(--accent);color:var(--accent)}
+    .editor-panel{flex:1;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;display:flex;flex-direction:column}
+    .editor-header{padding:14px 20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;font-size:.85rem;font-weight:600}
+    .editor-badge{font-size:.72rem;padding:3px 9px;border-radius:20px;background:rgba(59,130,246,.12);color:var(--accent)}
+    textarea{flex:1;background:var(--surface2);color:var(--text);border:none;padding:20px 24px;font-family:'JetBrains Mono',monospace;font-size:.84rem;line-height:1.7;resize:none;outline:none;min-height:560px}
+    .status-bar{padding:10px 20px;border-top:1px solid var(--border);font-size:.75rem;color:var(--muted);display:flex;justify-content:space-between}
+    .toast{position:fixed;bottom:24px;right:24px;padding:12px 20px;border-radius:10px;font-size:.85rem;font-weight:600;z-index:999;animation:fadein .3s;transition:opacity .3s}
+    .toast-ok{background:rgba(34,197,94,.15);border:1px solid var(--green);color:var(--green)}
+    .toast-err{background:rgba(239,68,68,.15);border:1px solid var(--red);color:var(--red)}
+    @keyframes fadein{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+    ::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
+  </style>
+</head>
+<body>
+
+<nav class="sidebar">
+  <div class="logo">⚡ Aether</div>
+  <div class="nav-section">Platform</div>
+  <a href="/" class="nav-item"><span>🏠</span> Dashboard</a>
+  <a href="/signals" class="nav-item"><span>📡</span> Signals</a>
+  <a href="/strategies" class="nav-item"><span>🎯</span> Strategies</a>
+  <div class="nav-section">System</div>
+  <a href="/config" class="nav-item active"><span>⚙️</span> Config</a>
+  <a href="/health-dashboard" class="nav-item"><span>❤️</span> Health</a>
+  <div class="sidebar-footer">Logged in as <strong>{{ user }}</strong></div>
+</nav>
+
+<main class="main">
+  <div class="topbar">
+    <h1 class="page-title">⚙️ Configuration</h1>
+  </div>
+
+  <div class="editor-panel">
+    <div class="editor-header">
+      <span>config/aether.yaml</span>
+      <span class="editor-badge">Read-only</span>
+    </div>
+    <textarea id="config-editor" spellcheck="false" readonly>{{ config }}</textarea>
+    <div class="status-bar">
+      <span id="status-msg">Ready</span>
+      <span id="char-count"></span>
+    </div>
+  </div>
+</main>
+
+<script>
+  document.getElementById('char-count').textContent = `${document.getElementById('config-editor').value.length} chars`;
+</script>
+</body>
+</html>

@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Strategies – Aether</title>
+  <meta name="description" content="Strategy registry and configuration for the Aether trading engine" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root{--bg:#080c14;--surface:#0e1421;--surface2:#151d2e;--border:#1e2d47;--accent:#3b82f6;--accent2:#6366f1;--green:#22c55e;--red:#ef4444;--yellow:#eab308;--purple:#a855f7;--text:#e2e8f0;--muted:#64748b;--radius:12px}
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex}
+    .sidebar{width:220px;min-height:100vh;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:24px 0;position:fixed;left:0;top:0;bottom:0}
+    .logo{padding:0 24px 28px;font-size:1.3rem;font-weight:700;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+    .nav-item{display:flex;align-items:center;gap:10px;padding:11px 24px;color:var(--muted);text-decoration:none;font-size:.875rem;font-weight:500;transition:all .15s;border-left:3px solid transparent}
+    .nav-item:hover,.nav-item.active{color:var(--text);background:var(--surface2);border-left-color:var(--accent)}
+    .nav-section{font-size:.7rem;text-transform:uppercase;letter-spacing:1px;color:var(--muted);padding:16px 24px 6px;font-weight:600}
+    .sidebar-footer{margin-top:auto;padding:16px 24px;font-size:.75rem;color:var(--muted)}
+    .main{margin-left:220px;flex:1;padding:32px}
+    .topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:28px}
+    .page-title{font-size:1.5rem;font-weight:700}
+    .strat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:20px}
+    .strat-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:22px;transition:border-color .2s,transform .2s;position:relative;overflow:hidden}
+    .strat-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,var(--accent),var(--accent2))}
+    .strat-card:hover{border-color:var(--accent);transform:translateY(-2px)}
+    .strat-card.disabled{opacity:.55}
+    .strat-card.disabled::before{background:var(--border)}
+    .strat-name{font-size:1rem;font-weight:700;margin-bottom:6px}
+    .strat-version{font-size:.72rem;color:var(--muted);font-family:monospace}
+    .strat-meta{margin-top:14px;display:flex;justify-content:space-between;align-items:center}
+    .badge{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:20px;font-size:.72rem;font-weight:600}
+    .badge-on{background:rgba(34,197,94,.12);color:var(--green)}
+    .badge-off{background:rgba(100,116,139,.12);color:var(--muted)}
+    .strat-path{margin-top:10px;font-size:.72rem;color:var(--muted);font-family:monospace;word-break:break-all}
+    .info-box{background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:20px;margin-bottom:24px;font-size:.85rem;color:var(--muted);line-height:1.6}
+    .info-box strong{color:var(--text)}
+    ::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
+  </style>
+</head>
+<body>
+
+<nav class="sidebar">
+  <div class="logo">⚡ Aether</div>
+  <div class="nav-section">Platform</div>
+  <a href="/" class="nav-item"><span>🏠</span> Dashboard</a>
+  <a href="/signals" class="nav-item"><span>📡</span> Signals</a>
+  <a href="/strategies" class="nav-item active"><span>🎯</span> Strategies</a>
+  <div class="nav-section">System</div>
+  <a href="/config" class="nav-item"><span>⚙️</span> Config</a>
+  <a href="/health-dashboard" class="nav-item"><span>❤️</span> Health</a>
+  <div class="sidebar-footer">Logged in as <strong>{{ user }}</strong></div>
+</nav>
+
+<main class="main">
+  <div class="topbar">
+    <h1 class="page-title">🎯 Strategies</h1>
+  </div>
+
+  <div class="info-box">
+    <strong>Operator note:</strong> To enable or disable a strategy, send the AI assistant a natural language command such as
+    <em>"enable strategy trend_following_v1"</em> via Telegram or the dashboard WebSocket chat.
+    Changes take effect immediately without a restart.
+  </div>
+
+  <div class="strat-grid">
+    {% if strategies %}
+      {% for strat in strategies %}
+      <div class="strat-card {% if not strat.enabled %}disabled{% endif %}">
+        <div class="strat-name">{{ strat.name }}</div>
+        <div class="strat-version">v{{ strat.get('version', '1.0') }}</div>
+        <div class="strat-path">{{ strat.config_path }}</div>
+        <div class="strat-meta">
+          <span class="badge {% if strat.enabled %}badge-on{% else %}badge-off{% endif %}">
+            {% if strat.enabled %}✅ Enabled{% else %}⛔ Disabled{% endif %}
+          </span>
+        </div>
+      </div>
+      {% endfor %}
+    {% else %}
+      <div style="color:var(--muted);padding:40px;grid-column:1/-1;text-align:center">
+        No strategies registered. Add them in <code>config/aether.yaml</code> under <code>strategies:</code>.
+      </div>
+    {% endif %}
+  </div>
+</main>
+
+</body>
+</html>

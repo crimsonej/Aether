@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aether"
+version = "1.0.0"
+description = "Deterministic Trading Intelligence Platform"
+dependencies = [
+    "structlog",
+    "pyyaml",
+    "pydantic",
+    "requests",
+    "pandas",
+    "numpy",
+    "python-dateutil",
+    "typer[all]",
+    "fastapi",
+    "uvicorn",
+    "python-dotenv",
+    "prompt_toolkit",
+]
+
+[project.scripts]
+aether = "aether.cli.main:app"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["aether*"]

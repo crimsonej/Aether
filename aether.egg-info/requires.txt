@@ -1,0 +1,11 @@
+structlog
+pyyaml
+pydantic
+requests
+pandas
+numpy
+python-dateutil
+typer[all]
+fastapi
+uvicorn
+python-dotenv

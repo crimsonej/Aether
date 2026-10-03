@@ -1,0 +1,22 @@
+flowchart TD
+    User[Operator (Telegram)] -->|Clicks| TelegramAdapter[Telegram Adapter]
+    TelegramAdapter -->|Publishes callbacks| EventBus
+    EventBus --> TelegramMenu[TelegramMenuService]
+    TelegramMenu --> AdapterRegistry[AdapterRegistry]
+    AdapterRegistry -->|Provides| TelegramAdapter
+    EventBus --> DataEngine
+    DataEngine --> DataProviderManager
+    DataProviderManager -->|publishes| data_provider_events[(data.provider_changed / failed / health)]
+    DataProviderManager --> MarketStatusService
+    MarketStatusService -->|publishes| market_events[(market.opened/closed/low_liquidity)]
+    MarketStatusService --> StrategyEngine
+    StrategyEngine -->|emits| signal_emitted[(signal.emitted)]
+    DeliveryManager --> TelegramAdapter
+    SignalFlow[Signal Pipeline] --> DeliveryManager
+    StrategyEngine -->|suppresses when closed| SignalSuppressed[(signal.suppressed)]
+    ModelManager -->|publishes| model_events[(model.fallback / error)]
+    ModelManager --> TelegramMenu
+    EventBus --> ModelManager
+
+    classDef services fill:#f9f,stroke:#333,stroke-width:1px
+    class DataEngine,DataProviderManager,MarketStatusService,StrategyEngine,ModelManager,DeliveryManager services

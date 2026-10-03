@@ -1,0 +1,16 @@
+enabled: true
+name: trend_following_v1
+params:
+  profile: scalper
+  signal_mode: signal_only
+  adx_threshold: 20
+  min_confidence: 55
+  reward_risk_ratio: 1.5
+  atr_stop_multiplier: 1.0
+  expiry:
+    5m: 20m
+    15m: 45m
+    1h: 2h
+  weights:
+    momentum: 0.55
+    trend: 0.45

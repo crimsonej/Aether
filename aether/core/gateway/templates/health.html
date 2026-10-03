@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Health – Aether</title>
+  <meta name="description" content="Aether platform component health and subsystem status" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root{--bg:#080c14;--surface:#0e1421;--surface2:#151d2e;--border:#1e2d47;--accent:#3b82f6;--accent2:#6366f1;--green:#22c55e;--red:#ef4444;--yellow:#eab308;--text:#e2e8f0;--muted:#64748b;--radius:12px}
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex}
+    .sidebar{width:220px;min-height:100vh;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:24px 0;position:fixed;left:0;top:0;bottom:0}
+    .logo{padding:0 24px 28px;font-size:1.3rem;font-weight:700;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+    .nav-item{display:flex;align-items:center;gap:10px;padding:11px 24px;color:var(--muted);text-decoration:none;font-size:.875rem;font-weight:500;transition:all .15s;border-left:3px solid transparent}
+    .nav-item:hover,.nav-item.active{color:var(--text);background:var(--surface2);border-left-color:var(--accent)}
+    .nav-section{font-size:.7rem;text-transform:uppercase;letter-spacing:1px;color:var(--muted);padding:16px 24px 6px;font-weight:600}
+    .sidebar-footer{margin-top:auto;padding:16px 24px;font-size:.75rem;color:var(--muted)}
+    .main{margin-left:220px;flex:1;padding:32px}
+    .topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:28px}
+    .page-title{font-size:1.5rem;font-weight:700}
+    .refresh-btn{background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:8px 16px;border-radius:8px;font-family:inherit;font-size:.82rem;font-weight:600;cursor:pointer;transition:border-color .15s}
+    .refresh-btn:hover{border-color:var(--accent);color:var(--accent)}
+    .health-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px;margin-bottom:28px}
+    .health-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px 20px;display:flex;align-items:center;gap:14px;transition:border-color .2s}
+    .health-card:hover{border-color:var(--accent)}
+    .health-icon{font-size:1.6rem;width:44px;height:44px;display:flex;align-items:center;justify-content:center;border-radius:10px;flex-shrink:0}
+    .icon-ok{background:rgba(34,197,94,.1)}
+    .icon-err{background:rgba(239,68,68,.1)}
+    .icon-warn{background:rgba(234,179,8,.1)}
+    .icon-idle{background:rgba(100,116,139,.1)}
+    .health-info{flex:1;min-width:0}
+    .health-name{font-weight:600;font-size:.9rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .health-state{font-size:.75rem;margin-top:3px}
+    .state-ok{color:var(--green)}
+    .state-err{color:var(--red)}
+    .state-warn{color:var(--yellow)}
+    .state-idle{color:var(--muted)}
+    .panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:24px}
+    .panel-header{padding:16px 20px;border-bottom:1px solid var(--border);font-weight:600;font-size:.9rem}
+    table{width:100%;border-collapse:collapse}
+    th{font-size:.7rem;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);padding:10px 20px;text-align:left;border-bottom:1px solid var(--border)}
+    td{padding:12px 20px;font-size:.85rem;border-bottom:1px solid rgba(30,45,71,.5)}
+    tr:last-child td{border-bottom:none}
+    tr:hover td{background:var(--surface2)}
+    .badge{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:20px;font-size:.72rem;font-weight:600}
+    .badge-ok{background:rgba(34,197,94,.12);color:var(--green)}
+    .badge-err{background:rgba(239,68,68,.12);color:var(--red)}
+    .badge-idle{background:rgba(100,116,139,.12);color:var(--muted)}
+    .last-updated{font-size:.75rem;color:var(--muted);padding:10px 20px;text-align:right;border-top:1px solid var(--border)}
+    ::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
+  </style>
+</head>
+<body>
+
+<nav class="sidebar">
+  <div class="logo">⚡ Aether</div>
+  <div class="nav-section">Platform</div>
+  <a href="/" class="nav-item"><span>🏠</span> Dashboard</a>
+  <a href="/signals" class="nav-item"><span>📡</span> Signals</a>
+  <a href="/strategies" class="nav-item"><span>🎯</span> Strategies</a>
+  <div class="nav-section">System</div>
+  <a href="/config" class="nav-item"><span>⚙️</span> Config</a>
+  <a href="/health-dashboard" class="nav-item active"><span>❤️</span> Health</a>
+  <div class="sidebar-footer">Logged in as <strong>{{ user }}</strong></div>
+</nav>
+
+<main class="main">
+  <div class="topbar">
+    <h1 class="page-title">❤️ Health Monitor</h1>
+    <button class="refresh-btn" onclick="fetchHealth()">⟳ Refresh</button>
+  </div>
+
+  <!-- Subsystem lifecycle cards -->
+  <div class="health-grid" id="health-grid">
+    {% for name, state in subsystems.items() %}
+    {% set is_ok = state in ['running', 'started', 'OK'] %}
+    {% set is_err = state in ['error', 'crashed', 'ERROR'] %}
+    {% set icon = '✅' if is_ok else ('❌' if is_err else '⏸') %}
+    {% set iconcls = 'icon-ok' if is_ok else ('icon-err' if is_err else 'icon-idle') %}
+    {% set statecls = 'state-ok' if is_ok else ('state-err' if is_err else 'state-idle') %}
+    <div class="health-card">
+      <div class="health-icon {{ iconcls }}">{{ icon }}</div>
+      <div class="health-info">
+        <div class="health-name">{{ name }}</div>
+        <div class="health-state {{ statecls }}">{{ state }}</div>
+      </div>
+    </div>
+    {% else %}
+    <div style="color:var(--muted);grid-column:1/-1;text-align:center;padding:40px">
+      No subsystem data available yet.
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- Detailed health table from HealthMonitor -->
+  <div class="panel">
+    <div class="panel-header">🔬 Component Health Detail</div>
+    <table>
+      <thead>
+        <tr><th>Component</th><th>Status</th><th>Detail</th></tr>
+      </thead>
+      <tbody id="health-detail-tbody">
+        {% for component, data in health.items() %}
+        {% set st = data.get('status', 'OK') if data is mapping else 'OK' %}
+        {% set cls = 'badge-ok' if st == 'OK' else 'badge-err' %}
+        <tr>
+          <td><strong>{{ component }}</strong></td>
+          <td><span class="badge {{ cls }}">{{ st }}</span></td>
+          <td style="color:var(--muted);font-size:.78rem">{{ data.get('component', data) if data is mapping else data }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="3" style="text-align:center;color:var(--muted);padding:20px">
+          No health data yet – the HealthMonitor polls every 30 seconds.
+        </td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <div class="last-updated" id="last-updated">Last updated: —</div>
+  </div>
+</main>
+
+<script>
+  async function fetchHealth() {
+    try {
+      const r = await fetch('/health');
+      if (!r.ok) return;
+      const data = await r.json();
+      const tbody = document.getElementById('health-detail-tbody');
+      const keys = Object.keys(data);
+      if (!keys.length) return;
+      tbody.innerHTML = keys.map(k => {
+        const d = data[k];
+        const st = (d && d.status) ? d.status : 'OK';
+        const cls = st === 'OK' ? 'badge-ok' : 'badge-err';
+        const detail = (d && typeof d === 'object') ? JSON.stringify(d).slice(0, 120) : String(d);
+        return `<tr>
+          <td><strong>${k}</strong></td>
+          <td><span class="badge ${cls}">${st}</span></td>
+          <td style="color:var(--muted);font-size:.78rem">${detail}</td>
+        </tr>`;
+      }).join('');
+      document.getElementById('last-updated').textContent = 'Last updated: ' + new Date().toLocaleTimeString();
+    } catch(e) { console.warn('Health fetch failed', e); }
+  }
+
+  fetchHealth();
+  setInterval(fetchHealth, 15000);
+</script>
+
+</body>
+</html>

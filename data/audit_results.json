@@ -1,0 +1,259 @@
+{
+  "passed": 38,
+  "failed": 4,
+  "total": 42,
+  "results": [
+    {
+      "section": "AI Config",
+      "test": "AIConfigManager boots without LLM credentials",
+      "passed": true,
+      "note": ""
+    },
+    {
+      "section": "AI Config",
+      "test": "All LLM providers fail \u2192 sends error reply to user, no crash",
+      "passed": true,
+      "note": "responses=['[Aether \u2013 offline mode] All cloud AI providers are currently unavailable. Your request has been logged. Please check your API keys or try again later.']"
+    },
+    {
+      "section": "AI Config",
+      "test": "ConversationMemory persists across restart",
+      "passed": true,
+      "note": "entries=[{'role': 'assistant', 'text': 'Done.', 'timestamp': 1073.5142496}, {'role': 'user', 'text': 'Set EUR/USD risk to 1%', 'timestamp': 2476.905457431}, {'role': 'assistant', 'text': 'Done.', 'timestamp': 2476.905989545}, {'role': 'user', 'text': 'Set EUR/USD risk to 1%', 'timestamp': 2500.108367088}, {'role': 'assistant', 'text': 'Done.', 'timestamp': 2500.109136333}]"
+    },
+    {
+      "section": "Model Failover",
+      "test": "Skips unhealthy \u2192 falls through to LocalProvider",
+      "passed": true,
+      "note": "tokens=['[Aether ', '\u2013 ', 'offline ', 'mode] ', 'All ', 'cloud ', 'AI ', 'providers ', 'are ', 'currently ', 'unavailable. ', 'Your ', 'request ', 'has ', 'been ', 'logged. ', 'Please ', 'check ', 'your ', 'API ', 'keys ', 'or ', 'try ', 'again ', 'later. ']"
+    },
+    {
+      "section": "Model Failover",
+      "test": "Backoff provider is skipped in chain",
+      "passed": true,
+      "note": ""
+    },
+    {
+      "section": "Model Failover",
+      "test": "All dead providers \u2192 RuntimeError raised",
+      "passed": true,
+      "note": ""
+    },
+    {
+      "section": "Model Failover",
+      "test": "model.fallback event published for each skipped provider",
+      "passed": false,
+      "note": "events=0"
+    },
+    {
+      "section": "Streaming",
+      "test": "Tokens delivered to registered sink",
+      "passed": true,
+      "note": "tokens=['[Aether ', '\u2013 ', 'offline ', 'mode] ', 'All ', 'cloud ', 'AI ', 'providers ', 'are ', 'currently ', 'unavailable. ', 'Your ', 'request ', 'has ', 'been ', 'logged. ', 'Please ', 'check ', 'your ', 'API ', 'keys ', 'or ', 'try ', 'again ', 'later. ']"
+    },
+    {
+      "section": "Streaming",
+      "test": "Duplicate sink name raises ValueError",
+      "passed": true,
+      "note": ""
+    },
+    {
+      "section": "Streaming",
+      "test": "Back-pressure: queue full drops tokens without hang",
+      "passed": true,
+      "note": ""
+    },
+    {
+      "section": "Streaming",
+      "test": "Sink crash does not stop delivery to other sinks",
+      "passed": true,
+      "note": "good_received=['[Aether ', '\u2013 ', 'offline ', 'mode] ', 'All ', 'cloud ', 'AI ', 'providers ', 'are ', 'currently ', 'unavailable. ', 'Your ', 'request ', 'has ', 'been ', 'logged. ', 'Please ', 'check ', 'your ', 'API ', 'keys ', 'or ', 'try ', 'again ', 'later. ']"
+    },
+    {
+      "section": "RetryQueue",
+      "test": "SQLite DB created on boot",
+      "passed": true,
+      "note": "/home/joa/Desktop/edit room/aether/data/retry_queue.db"
+    },
+    {
+      "section": "RetryQueue",
+      "test": "Enqueued row survives restart (DB persistence)",
+      "passed": true,
+      "note": "rows=3"
+    },
+    {
+      "section": "RetryQueue",
+      "test": "Missing adapter registry: skips retry gracefully, no crash",
+      "passed": true,
+      "note": ""
+    },
+    {
+      "section": "RetryQueue",
+      "test": "Failed delivery increments attempts and sets future next_attempt",
+      "passed": true,
+      "note": "rows=[(1, 1788812859.1916404)]"
+    },
+    {
+      "section": "SignalState",
+      "test": "Registered signal persists across restart",
+      "passed": false,
+      "note": "'SignalStateManager' object has no attribute 'register_signal'"
+    },
+    {
+      "section": "SignalState",
+      "test": "mark_expired moves signal to history, removes from active",
+      "passed": true,
+      "note": ""
+    },
+    {
+      "section": "SignalState",
+      "test": "Cooldown state persists across restart",
+      "passed": true,
+      "note": ""
+    },
+    {
+      "section": "SignalState",
+      "test": "Corrupt active_signals.json \u2192 recovers gracefully",
+      "passed": true,
+      "note": ""
+    },
+    {
+      "section": "AdapterRegistry",
+      "test": "load_all() succeeds with no enabled adapters",
+      "passed": true,
+      "note": "loaded=[]"
+    },
+    {
+      "section": "AdapterRegistry",
+      "test": "Telegram adapter: MANIFEST accessible",
+      "passed": true,
+      "note": "manifest={'name': 'telegram', 'type': 'both', 'config_schema': {'type': 'object', 'properties': {'token_env': {'type': 'string'}, 'chat_id_env': {'type': 'string'}, 'webhook_url': {'type': 'string', 'format': 'uri'}}, 'required': ['token_env', 'chat_id_env']}}"
+    },
+    {
+      "section": "AdapterRegistry",
+      "test": "WhatsApp adapter: MANIFEST accessible",
+      "passed": true,
+      "note": "manifest={'name': 'whatsapp', 'type': 'both', 'config_schema': {'type': 'object', 'properties': {'auth_token_env': {'type': 'string'}, 'phone_number_env': {'type': 'string'}, 'api_base': {'type': 'string', 'format': 'uri'}}, 'required': ['auth_token_env', 'phone_number_env']}}"
+    },
+    {
+      "section": "AdapterRegistry",
+      "test": "All adapter modules expose module-level MANIFEST",
+      "passed": true,
+      "note": "per-adapter={'telegram': True, 'whatsapp': True, 'discord': True, 'web': True}"
+    },
+    {
+      "section": "AdapterRegistry",
+      "test": "get('nonexistent') raises KeyError, no crash",
+      "passed": true,
+      "note": ""
+    },
+    {
+      "section": "Telegram",
+      "test": "receive_message publishes user_command to EventBus",
+      "passed": false,
+      "note": "events=[]"
+    },
+    {
+      "section": "Telegram",
+      "test": "receive_message without bus set: warning only, no crash",
+      "passed": true,
+      "note": ""
+    },
+    {
+      "section": "Telegram",
+      "test": "Empty or missing message field: silent return, no crash",
+      "passed": true,
+      "note": ""
+    },
+    {
+      "section": "Telegram",
+      "test": "send_signal with no token \u2192 returns False, no crash",
+      "passed": true,
+      "note": ""
+    },
+    {
+      "section": "Telegram",
+      "test": "validate() with no token \u2192 returns False, no crash",
+      "passed": true,
+      "note": ""
+    },
+    {
+      "section": "WhatsApp",
+      "test": "send_signal with no credentials \u2192 returns False, no crash",
+      "passed": true,
+      "note": ""
+    },
+    {
+      "section": "WhatsApp",
+      "test": "validate() with no token \u2192 returns False, no crash",
+      "passed": true,
+      "note": ""
+    },
+    {
+      "section": "WhatsApp",
+      "test": "receive_message implemented for inbound command handling",
+      "passed": true,
+      "note": ""
+    },
+    {
+      "section": "WhatsApp",
+      "test": "_event_bus class attribute exists for registry injection",
+      "passed": true,
+      "note": ""
+    },
+    {
+      "section": "Reload",
+      "test": "ServiceManager.reload() executes without unhandled exception",
+      "passed": false,
+      "note": "No module named 'prometheus_client'"
+    },
+    {
+      "section": "Reload",
+      "test": "ConfigStore.set() persists to disk and increments version",
+      "passed": true,
+      "note": "v_before=9 v_after=10"
+    },
+    {
+      "section": "Reload",
+      "test": "ConfigStore.load() on missing config \u2192 FileNotFoundError raised",
+      "passed": true,
+      "note": ""
+    },
+    {
+      "section": "Reload",
+      "test": "Atomic config write: .tmp file does not linger after save",
+      "passed": true,
+      "note": ""
+    },
+    {
+      "section": "Oanda",
+      "test": "DataEngine.start() without OANDA_API_KEY: boots cleanly, no crash",
+      "passed": true,
+      "note": ""
+    },
+    {
+      "section": "Oanda",
+      "test": "_fetch_and_publish() with no client: skips fetch, no crash",
+      "passed": true,
+      "note": ""
+    },
+    {
+      "section": "Oanda",
+      "test": "get_secret() on missing env var \u2192 raises exception",
+      "passed": true,
+      "note": ""
+    },
+    {
+      "section": "Oanda",
+      "test": "DataEngine.health() returns structured dict",
+      "passed": true,
+      "note": "health={'status': 'OK', 'component': 'data_engine', 'details': {'provider_manager': 'initialized'}}"
+    },
+    {
+      "section": "Oanda",
+      "test": "get_candles() is synchronous (blocks event loop) \u2014 ARCHITECTURE RISK",
+      "passed": true,
+      "note": "get_candles is a sync method using requests.Session \u2014 blocks asyncio event loop during fetch"
+    }
+  ]
+}
