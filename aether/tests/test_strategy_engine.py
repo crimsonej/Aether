@@ -1,4 +1,5 @@
 import unittest
+import time
 from aether.core.strategy.engine import StrategyEngine, StrategyRegistry
 from aether.core.strategy.trend_following import TrendFollowingV1
 from aether.core.context.models import MarketContext, NewsRisk
@@ -59,12 +60,43 @@ class TestStrategyEngine(unittest.TestCase):
         self.assertEqual((first_id, first_hash), (reordered_id, reordered_hash))
         self.assertNotEqual((first_id, first_hash), (changed_id, changed_hash))
 
+    def test_quote_history_provides_typical_spread_when_config_missing(self):
+        self.engine._quote_spread_history["EURUSD"] = [0.00008, 0.00010, 0.00012]
+
+        typical = self.engine._resolve_typical_spread("EURUSD")
+
+        self.assertAlmostEqual(typical, 0.00010)
+
     def test_context_and_feature_timestamps_must_match(self):
         self.engine._context_timestamps["EURUSD:1h"] = 100
         self.engine._feature_timestamps["EURUSD:1h"] = 101
         self.assertFalse(self.engine._snapshots_match("EURUSD:1h"))
         self.engine._feature_timestamps["EURUSD:1h"] = 100
         self.assertTrue(self.engine._snapshots_match("EURUSD:1h"))
+
+    def test_symbol_readiness_reports_quote_and_spread_status(self):
+        self.engine._quote_spread_history["EURUSD"] = [0.00008, 0.00010, 0.00012]
+        self.engine._quote_cache["EURUSD"] = {"spread": 0.00009, "timestamp": int(time.time())}
+
+        ready = self.engine.symbol_readiness("EURUSD")
+        self.assertTrue(ready["ready"])
+        self.assertEqual(ready["reason"], "fresh_quote_and_valid_spread")
+
+        no_quote = self.engine.symbol_readiness("GBPUSD")
+        self.assertFalse(no_quote["ready"])
+        self.assertEqual(no_quote["reason"], "missing_quote")
+
+    def test_registry_registers_approved_builtin_profiles(self):
+        names = {
+            "trend_following_v1",
+            "fvg",
+            "demand_supply",
+            "liquidity",
+            "support_resistance",
+            "order_block",
+        }
+        for name in names:
+            self.assertIsNotNone(self.registry.get_strategy(name), f"missing strategy profile: {name}")
 
 
 class TestCandleIntake(unittest.IsolatedAsyncioTestCase):
@@ -97,6 +129,24 @@ class TestCandleIntake(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(candle.timestamp, 100)
         self.assertEqual(candle.close_time, 101)
         self.assertEqual(candle.source, "test-provider")
+
+    async def test_quote_cache_accepts_only_fresh_valid_bid_ask(self):
+        await self.engine._on_quote({
+            "symbol": "EURUSD", "bid": 1.1, "ask": 1.1002,
+            "timestamp": int(time.time()), "source": "test",
+        })
+        self.assertIn("EURUSD", self.engine._quote_cache)
+
+        await self.engine._on_quote({
+            "symbol": "GBPUSD", "bid": 1.2, "ask": 1.2002,
+            "timestamp": int(time.time()) - 10000, "source": "test",
+        })
+        await self.engine._on_quote({
+            "symbol": "USDJPY", "bid": 150.0, "ask": 149.0,
+            "timestamp": int(time.time()), "source": "test",
+        })
+        self.assertNotIn("GBPUSD", self.engine._quote_cache)
+        self.assertNotIn("USDJPY", self.engine._quote_cache)
 
 if __name__ == "__main__":
     unittest.main()

@@ -2,7 +2,7 @@
 
 This module provides an async‑friendly, atomic JSON‑backed configuration store
 with schema validation, versioning, and an event‑driven change notification
-mechanism. All runtime components (service manager, adapters, AI config
+mechanism. All runtime components (service manager, adapters, AetherAgent
 manager, etc.) read from and write to this store; the rest of the system
 reacts to the `config_changed` events published on the EventBus.
 """

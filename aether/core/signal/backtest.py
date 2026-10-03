@@ -23,6 +23,7 @@ class BacktestEngine:
     def __init__(self, data_path: str, config):
         self.data_path = Path(data_path)
         self.config = config
+        self._historical_spreads: Dict[int, float] = {}
 
     def run_replay(self, symbol: str, timeframe: str, start_date: str, end_date: str):
         logger.info("backtest_started", symbol=symbol, timeframe=timeframe, start=start_date, end=end_date)
@@ -56,6 +57,10 @@ class BacktestEngine:
             candidate = strategy_engine.generate_candidate(symbol, timeframe, context, features, candle)
             if candidate is None:
                 continue
+
+            candidate["current_spread"] = self._historical_spreads.get(candle.timestamp)
+            typical_spreads = self._config_get("validation.typical_spread_by_symbol", {}) or {}
+            candidate["typical_spread"] = typical_spreads.get(symbol)
 
             validation = firewall.validate(candidate)
             if not validation["valid"]:
@@ -120,6 +125,7 @@ class BacktestEngine:
             return []
 
         candles = []
+        self._historical_spreads = {}
         for row in rows:
             try:
                 timestamp = int(float(row["timestamp"]))
@@ -137,6 +143,9 @@ class BacktestEngine:
                     continue
                 if candle.volume < 0 or candle.low > min(candle.open, candle.close) or candle.high < max(candle.open, candle.close):
                     continue
+                spread = self._finite(row.get("spread", row.get("current_spread")))
+                if spread is not None and spread >= 0:
+                    self._historical_spreads[candle.timestamp] = spread
                 candles.append(candle)
             except (KeyError, TypeError, ValueError):
                 continue
@@ -244,6 +253,10 @@ class BacktestEngine:
         return BacktestEngine._duration_seconds(timeframe) or 3600
 
     @staticmethod
-    def _finite(value: float) -> bool:
+    def _finite(value: float) -> Optional[float]:
         import math
-        return math.isfinite(value)
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            return None
+        return number if math.isfinite(number) else None

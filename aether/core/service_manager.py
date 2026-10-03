@@ -156,6 +156,7 @@ class ServiceManager:
         from .features.engine import FeatureEngine, IndicatorRegistry
         from .strategy.engine import StrategyEngine, StrategyRegistry
         from .signal.state_manager import SignalStateManager
+        from .alert_manager import AlertManager
         from .delivery.manager import DeliveryManager
         from .ops.health import HealthMonitor
         from .ops.retry_queue import RetryQueue
@@ -163,7 +164,7 @@ class ServiceManager:
         from .adapters.registry import AdapterRegistry
         from .metrics.exporter import MetricsExporter
         
-        from .ai_config_manager import AIConfigManager
+        from .agent import AetherAgent
         from .security.permission import PermissionEngine
         from .memory.conversation import ConversationMemory
         from .streaming.manager import StreamingManager
@@ -188,6 +189,7 @@ class ServiceManager:
         features = FeatureEngine(ind_registry, self.config, self.bus)
         
         # Strategy setup
+        from .strategy.builtin_profiles import build_default_strategies
         from .strategy.trend_following import TrendFollowingV1
 
         def _load_strategy_config(name: str) -> Dict[str, Any]:
@@ -211,16 +213,19 @@ class ServiceManager:
 
         strat_registry = StrategyRegistry()
         strat_registry.register(TrendFollowingV1("trend_following_v1", "1.0.0", _load_strategy_config("trend_following_v1")))
+        for strategy_instance in build_default_strategies():
+            strat_registry.register(strategy_instance)
         strategy = StrategyEngine(strat_registry, self.config)
         
         # Signals setup
         signal = SignalStateManager(str(self.project_root / "data"), self.config)
+        alerts = AlertManager(self.config, self.bus)
         
         # Security, Memory, LLM/AI
         permission = PermissionEngine(self.project_root / "config" / "permissions.yaml")
         conversation = ConversationMemory("default_session", self.project_root)
         model = ModelManager(self.config, self.bus)
-        ai_config = AIConfigManager(model, self.config, permission, conversation, bus=self.bus)
+        agent = AetherAgent(model, self.config, permission, conversation, bus=self.bus)
         streaming = StreamingManager(model)
         
         # Delivery & Adapters
@@ -243,10 +248,11 @@ class ServiceManager:
             "features": features,
             "strategy": strategy,
             "signal": signal,
+            "alerts": alerts,
             "permission": permission,
             "conversation": conversation,
             "model": model,
-            "ai_config": ai_config,
+            "agent": agent,
             "streaming": streaming,
             "adapters": adapters,
             "retry": retry,
@@ -256,7 +262,7 @@ class ServiceManager:
         }
         # Add telegram menu after adapters and delivery exist; it needs adapters registry
         try:
-            telegram_menu = TelegramMenuService(self.config, self.bus, adapters)
+            telegram_menu = TelegramMenuService(self.config, self.bus, adapters, model)
             raw_subsystems["telegram_menu"] = telegram_menu
         except Exception:
             pass
@@ -296,13 +302,13 @@ class ServiceManager:
         if delivery and adapters and retry:
             await delivery.instance.setup(adapters.instance, retry.instance)
 
-        # Wire AIConfigManager senders so the bot can reply to free-form chat
-        ai_config = self._subsystems.get("ai_config")
-        if ai_config and adapters and hasattr(ai_config.instance, "bind_default_senders"):
+        # Bind platform transports to AetherAgent's conversational responses.
+        agent = self._subsystems.get("agent")
+        if agent and adapters and hasattr(agent.instance, "bind_default_senders"):
             try:
-                ai_config.instance.bind_default_senders(adapters.instance)
+                agent.instance.bind_default_senders(adapters.instance)
             except Exception:
-                logger.exception("ai_config_bind_senders_failed")
+                logger.exception("agent_bind_senders_failed")
 
         # Register ConfigStore watcher so subsystems receive ``config_changed``.
         self.config.watch(self._config_changed_watcher)

@@ -34,10 +34,11 @@ class TelegramMenuService:
     ]
     TIMEFRAME_OPTIONS = ["5m", "15m", "1h", "4h", "1d"]
 
-    def __init__(self, config: Any, bus: Any, adapters: Any):
+    def __init__(self, config: Any, bus: Any, adapters: Any, model_manager: Any = None):
         self.config = config
         self.bus = bus
         self.adapters = adapters
+        self.model_manager = model_manager
         self.stats = {
             "generated": 0,
             "active": 0,
@@ -59,6 +60,8 @@ class TelegramMenuService:
         await bus.subscribe("signal.missed", self._on_signal_closed)
         await bus.subscribe("model.fallback", self._on_model_fallback)
         await bus.subscribe("model.error", self._on_model_error)
+        await bus.subscribe("alert.triggered", self._on_alert_triggered)
+        await bus.subscribe("alert.source_error", self._on_alert_source_error)
         # Provider events for operator visibility
         await bus.subscribe("data.provider_failed", self._on_provider_failed)
         await bus.subscribe("data.provider_changed", self._on_provider_changed)
@@ -247,6 +250,8 @@ class TelegramMenuService:
     async def _route_models(self, action: Optional[str], model_name: Optional[str]) -> None:
         if action == "promote" and model_name:
             await self._promote_model(model_name)
+        elif action == "select_ollama" and model_name:
+            await self._select_ollama_model(model_name)
         else:
             await self._send_models_menu()
 
@@ -346,10 +351,39 @@ class TelegramMenuService:
             [{"text": f"Promote {model}", "callback_data": f"models:promote:{model}"}]
             for model in chain
         ]
+        available_local = []
+        if self.model_manager and hasattr(self.model_manager, "available_models"):
+            available_local = await self.model_manager.available_models("Ollama")
+        if available_local:
+            keyboard.extend([
+                [{"text": f"Use local {model}", "callback_data": f"models:select_ollama:{model}"}]
+                for model in available_local[:20]
+            ])
         keyboard.append([{"text": "⬅️ Back", "callback_data": "menu:main"}])
+        local_status = (
+            f"\nInstalled local models: {', '.join(available_local)}"
+            if available_local else "\nOllama unavailable or no local models installed."
+        )
         await self._send_text(
-            f"Model chain: {' -> '.join(chain)}",
+            f"Model chain: {' -> '.join(chain)}{local_status}",
             keyboard,
+        )
+
+    async def _select_ollama_model(self, model_name: str) -> None:
+        if not self.model_manager or model_name not in await self.model_manager.available_models("Ollama"):
+            await self._send_text(
+                "That Ollama model is not installed or available.",
+                [[{"text": "Back", "callback_data": "menu:models"}]],
+            )
+            return
+        await self.config.set("model_manager.ollama.model", model_name)
+        await self.config.set("model_manager.ollama.enabled", True)
+        chain = await self._get_model_chain()
+        if "Ollama" not in chain:
+            await self.config.set("model_manager.chain", ["Ollama", *chain])
+        await self._send_text(
+            f"Enabled local model {model_name}. It is now first in the model chain.",
+            [[{"text": "Back", "callback_data": "menu:models"}]],
         )
 
     async def _send_status_menu(self) -> None:
@@ -479,6 +513,8 @@ class TelegramMenuService:
             return ["15m", "1h", "4h"]
 
     async def _get_model_chain(self) -> List[str]:
+        if self.model_manager and getattr(self.model_manager, "chain", None):
+            return list(self.model_manager.chain)
         try:
             chain = self.config.get("model_manager.chain")
             if isinstance(chain, list):
@@ -502,6 +538,25 @@ class TelegramMenuService:
         provider = payload.get("provider")
         err = payload.get("error")
         await self._send_text(f"⚠️ Model error: {provider} → {err}")
+
+    async def _on_alert_triggered(self, payload: Dict[str, Any]) -> None:
+        if payload.get("kind") == "price":
+            text = (
+                f"🔔 Price alert: {payload.get('symbol')} {payload.get('condition')} "
+                f"{payload.get('target')} (current {payload.get('price')})"
+            )
+        elif payload.get("kind") == "news":
+            pairs = ", ".join(payload.get("pairs", [])) or payload.get("currency", "")
+            text = (
+                f"🗞️ {str(payload.get('impact', 'high')).title()} impact news for {pairs}: "
+                f"{payload.get('title')} at {payload.get('timestamp')} UTC"
+            )
+        else:
+            return
+        await self._send_text(text)
+
+    async def _on_alert_source_error(self, payload: Dict[str, Any]) -> None:
+        await self._send_text(f"⚠️ News calendar unavailable: {payload.get('error', 'unknown error')}")
 
     async def _on_provider_failed(self, payload: Dict[str, Any]) -> None:
         provider = payload.get("provider")

@@ -40,6 +40,8 @@ class TestEndToEndSignalPipeline(unittest.IsolatedAsyncioTestCase):
                     return "Europe/London"
                 if key.startswith("validation.cooldown."):
                     return 0
+                if key == "validation.typical_spread_by_symbol":
+                    return {"EURUSD": 0.0002}
                 return default
 
         self.config = MockConfig()
@@ -131,6 +133,7 @@ class TestEndToEndSignalPipeline(unittest.IsolatedAsyncioTestCase):
             await asyncio.sleep(0.0005)
 
     async def test_signal_activation_and_tp_close(self):
+        await self._publish_quote()
         await self._publish_candles(210, 1.0, 0.00001)
         await asyncio.sleep(0.5)
 
@@ -188,6 +191,7 @@ class TestEndToEndSignalPipeline(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(self.mock_adapter.send_signal.called)
 
     async def test_signal_activation_and_sl_close(self):
+        await self._publish_quote()
         await self._publish_candles(210, 1.0, 0.00001)
         await asyncio.sleep(0.5)
 
@@ -235,6 +239,16 @@ class TestEndToEndSignalPipeline(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(closed["close_reason"], "sl")
         self.assertIn("closed_at", closed)
         self.assertTrue(self.mock_adapter.send_signal.called)
+
+    async def _publish_quote(self):
+        await self.bus.publish("data.quote", {
+            "symbol": "EURUSD",
+            "bid": 1.0999,
+            "ask": 1.1001,
+            "price": 1.1,
+            "timestamp": int(__import__("time").time()),
+            "source": "test",
+        })
 
 
 if __name__ == "__main__":

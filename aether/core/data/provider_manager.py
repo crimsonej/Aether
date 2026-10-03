@@ -185,7 +185,12 @@ class DataProviderManager:
                 try:
                     symbols = self.config.get("data.symbols")
                 except Exception:
-                    symbols = ["EURUSD"]
+                    symbols = None
+                if not symbols:
+                    try:
+                        symbols = self.config.get("watchlist")
+                    except Exception:
+                        symbols = None
                 if not symbols: symbols = ["EURUSD"]
 
                 try:
@@ -205,9 +210,9 @@ class DataProviderManager:
                 except Exception:
                     stagger_seconds = 0.0
 
-                for symbol in symbols:
+                for symbol_index, symbol in enumerate(symbols):
                     symbol_ok = True
-                    for tf in timeframes:
+                    for timeframe_index, tf in enumerate(timeframes):
                         try:
                             # 1. Candles
                             candles = await self.get_candles(symbol, tf, count=poll_count)
@@ -222,26 +227,31 @@ class DataProviderManager:
                             break
                         if candles:
                             candle = candles[-1]
-                            await self.bus.publish("data.candle", candle.model_dump())
+                            event = candle.model_dump()
+                            event["warmup_candles"] = [
+                                item.model_dump() for item in candles[:-1]
+                            ]
+                            await self.bus.publish("data.candle", event)
                             self._update_market_status(symbol, tf, candle.timestamp)
 
-                        # 2. Quote
-                        try:
-                            quote = await self.get_quote(symbol)
-                        except Exception as exc:
-                            logger.warning(
-                                "[DataProviderManager] quote failed for %s: %s",
-                                symbol, exc,
-                            )
-                            failed_symbols.append({"symbol": symbol, "timeframe": tf, "stage": "quote", "error": str(exc)})
-                            # Quote failure isn't fatal for the candle we've
-                            # already got — keep the symbol as "ok" if candles
-                            # succeeded.
-                            continue
+                        if stagger_seconds > 0 and timeframe_index < len(timeframes) - 1:
+                            await asyncio.sleep(stagger_seconds)
+
+                    # Quotes are symbol-scoped, so fetching one for each
+                    # timeframe wastes requests and delays the cycle.
+                    try:
+                        quote = await self.get_quote(symbol)
+                    except Exception as exc:
+                        logger.warning(
+                            "[DataProviderManager] quote failed for %s: %s",
+                            symbol, exc,
+                        )
+                        failed_symbols.append({"symbol": symbol, "timeframe": "all", "stage": "quote", "error": str(exc)})
+                    else:
                         await self.bus.publish("data.quote", quote.model_dump())
 
-                        if stagger_seconds > 0:
-                            await asyncio.sleep(stagger_seconds)
+                    if stagger_seconds > 0 and symbol_index < len(symbols) - 1:
+                        await asyncio.sleep(stagger_seconds)
 
                     if symbol_ok:
                         successful_symbols.append(symbol)
@@ -284,7 +294,8 @@ class DataProviderManager:
             except Exception:
                 interval = 60
             if not interval: interval = 60
-            await asyncio.sleep(interval)
+            remaining = max(0.0, float(interval) - (time.time() - cycle_start))
+            await asyncio.sleep(remaining)
 
     async def get_candles(self, symbol: str, timeframe: str, count: int = 200) -> List[NormalizedCandle]:
         candidate_names = await self._candidate_providers("candles")
@@ -346,6 +357,44 @@ class DataProviderManager:
 
     async def health(self) -> Dict[str, Any]:
         return {name: health.model_dump() for name, health in self.provider_health.items()}
+
+    async def verify_symbol(self, symbol: str, timeframes: Optional[List[str]] = None) -> Dict[str, Any]:
+        timeframes = timeframes or self.config.get("data.timeframes", ["1h"])
+        result = {
+            "symbol": symbol,
+            "status": "ok",
+            "providers": {},
+            "timeframes": {},
+        }
+        for name, provider in self.providers.items():
+            provider_status = {
+                "quote_ok": True,
+                "timeframes": {},
+                "error": None,
+            }
+            try:
+                quote = await provider.get_quote(symbol)
+                provider_status["quote_ok"] = bool(quote and quote.bid is not None and quote.ask is not None)
+                provider_status["quote_symbol"] = getattr(quote, "symbol", symbol)
+            except Exception as exc:
+                provider_status["quote_ok"] = False
+                provider_status["error"] = str(exc)
+            for timeframe in timeframes:
+                tf_status = "ok"
+                try:
+                    candles = await provider.get_candles(symbol, timeframe, count=5)
+                    if not candles or not any(getattr(c, "is_closed", False) for c in candles):
+                        tf_status = "missing"
+                except Exception as exc:
+                    tf_status = "failed"
+                    provider_status["error"] = provider_status["error"] or str(exc)
+                provider_status["timeframes"][timeframe] = tf_status
+            result["providers"][name] = provider_status
+            if not provider_status["quote_ok"]:
+                result["status"] = "degraded"
+        if not result["providers"]:
+            result["status"] = "unavailable"
+        return result
 
     async def _candidate_providers(self, capability: str) -> List[str]:
         """Return usable providers that advertise the given capability,

@@ -71,6 +71,51 @@ class TestTelegramMenuService(unittest.IsolatedAsyncioTestCase):
         self.config.set.assert_awaited_once_with("model_manager.chain", ["OpenAI", "Claude"])
         self.assertIn("Promoted OpenAI", self.tg_adapter.send_message.call_args.args[0])
 
+    async def test_menu_selects_an_installed_ollama_model(self):
+        model_manager = MagicMock()
+        model_manager.chain = ["Local"]
+        model_manager.available_models = AsyncMock(return_value=["qwen2.5:3b"])
+        menu = TelegramMenuService(self.config, self.bus, self.adapters, model_manager)
+
+        await menu._on_callback({"data": "models:select_ollama:qwen2.5:3b", "user": "123"})
+
+        self.config.set.assert_has_awaits([
+            unittest.mock.call("model_manager.ollama.model", "qwen2.5:3b"),
+            unittest.mock.call("model_manager.ollama.enabled", True),
+            unittest.mock.call("model_manager.chain", ["Ollama", "Local"]),
+        ])
+        self.assertIn("Enabled local model qwen2.5:3b", self.tg_adapter.send_message.call_args.args[0])
+
+    async def test_models_menu_lists_installed_local_models(self):
+        model_manager = MagicMock()
+        model_manager.chain = ["Local"]
+        model_manager.available_models = AsyncMock(return_value=["qwen2.5:3b"])
+        menu = TelegramMenuService(self.config, self.bus, self.adapters, model_manager)
+
+        await menu._send_models_menu()
+
+        text = self.tg_adapter.send_message.call_args.args[0]
+        markup = self.tg_adapter.send_message.call_args.kwargs["reply_markup"]
+        self.assertIn("Installed local models: qwen2.5:3b", text)
+        self.assertTrue(any(
+            button["callback_data"] == "models:select_ollama:qwen2.5:3b"
+            for row in markup["inline_keyboard"]
+            for button in row
+        ))
+
+    async def test_alert_events_are_delivered_as_operator_messages(self):
+        await self.menu._on_alert_triggered({
+            "kind": "price", "symbol": "EURUSD", "condition": "above",
+            "target": 1.1, "price": 1.1002,
+        })
+        self.assertIn("Price alert: EURUSD above 1.1", self.tg_adapter.send_message.call_args.args[0])
+
+        await self.menu._on_alert_triggered({
+            "kind": "news", "currency": "USD", "pairs": ["EURUSD"],
+            "impact": "high", "title": "CPI", "timestamp": 1900000000,
+        })
+        self.assertIn("High impact news for EURUSD: CPI", self.tg_adapter.send_message.call_args.args[0])
+
     async def test_performance_menu_reports_counts(self):
         await self.menu._on_signal_generated({"signal_id": "sig-001"})
         await self.menu._on_signal_closed({"signal_id": "sig-001", "state": "WIN"})

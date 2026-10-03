@@ -14,6 +14,8 @@ async def _bridge_flow():
     try:
         await sm.start()
         print("[System Check] Platform started successfully.")
+        assert "agent" in sm._subsystems
+        assert "ai_config" not in sm._subsystems
     except Exception as e:
         print(f"[System Check] FAILED to start platform: {e}")
         return

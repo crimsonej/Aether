@@ -21,7 +21,15 @@ class TrendFollowingV1(Strategy):
 
         # Positive Weights
         if context.directional_state != "Neutral": score += 25
-        if context.market_structure == "Higher Highs": score += 20
+        if context.market_structure == "BOS": score += 20
+        elif (
+            context.market_structure == "Higher Highs"
+            and context.directional_state == "Bullish"
+        ) or (
+            context.market_structure == "Lower Lows"
+            and context.directional_state == "Bearish"
+        ):
+            score += 20
         if features.get("ema200") and features["ema200"].is_valid: score += 15
         if features.get("adx") and features["adx"].value > 25: score += 15
         if features.get("rsi") and 40 < features["rsi"].value < 60: score += 10

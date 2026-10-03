@@ -5,7 +5,14 @@ operator:
     - enable_platform
     - disable_platform
     - set_indicator
-    - set_strategy_param
+    - add_price_alert
+    - remove_price_alert
+    - set_news_alerts
+    - list_alerts
+    - get_system_overview
+    - get_watchlist
+    - search_web
+    - fetch_web_page
 
 admin:
   allowed_actions:

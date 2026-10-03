@@ -65,7 +65,7 @@ class ValidationFirewall:
         current_spread = self._finite_number(signal_candidate.get("current_spread"))
         typical_spread = self._finite_number(signal_candidate.get("typical_spread"))
         if current_spread is None or typical_spread is None or typical_spread <= 0:
-            warnings.append("spread_data_unavailable")
+            failed_checks.append("spread_data_unavailable")
         else:
             try:
                 spread_limit = float(self.config.get("validation.max_spread_multiplier", 2.0))

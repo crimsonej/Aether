@@ -11,6 +11,7 @@ class FakeConfig:
             "features.enabled": ["ema20", "ema50", "ema200", "rsi", "atr", "adx", "macd"],
             "validation.min_confidence": 60,
             "validation.max_spread_multiplier": 2.0,
+            "validation.typical_spread_by_symbol": {"EURUSD": 0.0002},
             "validation.cooldown.normal_volatility": 0,
             "validation.cooldown.low_volatility": 0,
             "validation.cooldown.high_volatility": 0,
@@ -21,7 +22,7 @@ class FakeConfig:
 
 
 def write_candles(path, count=240):
-    start = int(datetime(2024, 1, 1, tzinfo=timezone.utc).timestamp())
+    start = int(datetime(2024, 1, 1, 1, tzinfo=timezone.utc).timestamp())
     candles = []
     for index in range(count):
         close = 1.1 + index * 0.0002
@@ -37,6 +38,7 @@ def write_candles(path, count=240):
             "close_time": start + (index + 1) * 3600,
             "source": "fixture",
             "is_closed": True,
+            "spread": 0.0001,
         })
     path.write_text(json.dumps(candles), encoding="utf-8")
 
@@ -66,3 +68,18 @@ def test_backtest_missing_history_returns_zero_results(tmp_path):
         "average_rr": 0.0,
         "details": [],
     }
+
+
+def test_backtest_without_historical_spreads_emits_no_signals(tmp_path):
+    write_candles(tmp_path / "EURUSD_1h.json")
+    candles = json.loads((tmp_path / "EURUSD_1h.json").read_text(encoding="utf-8"))
+    for candle in candles:
+        candle.pop("spread")
+    (tmp_path / "EURUSD_1h.json").write_text(json.dumps(candles), encoding="utf-8")
+
+    result = BacktestEngine(str(tmp_path), FakeConfig()).run_replay(
+        "EURUSD", "1h", "2024-01-01", "2024-01-10"
+    )
+
+    assert result["total_signals"] == 0
+    assert result["win_rate"] == 0.0

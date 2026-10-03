@@ -96,5 +96,34 @@ class TestFeatureCandleIntake(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(history), 1)
         self.assertEqual(history[0].close, 1.06)
 
+    async def test_warmup_batch_fills_indicator_lookback_immediately(self):
+        registry = IndicatorRegistry()
+        registry.register(EMAIndicator(20))
+
+        class Config:
+            def get(self, path, default=None):
+                return ["ema20"] if path == "features.enabled" else default
+
+        engine = FeatureEngine(registry, Config())
+        warmup = []
+        for timestamp in range(25):
+            close = 1.0 + timestamp * 0.001
+            warmup.append({
+                "symbol": "EURUSD", "timeframe": "1h", "open": close,
+                "high": close + 0.0002, "low": close - 0.0002, "close": close,
+                "volume": 10, "timestamp": timestamp, "close_time": timestamp,
+                "source": "test", "is_closed": True,
+            })
+        latest = {
+            **warmup[-1], "timestamp": 25, "close_time": 25,
+            "open": 1.025, "high": 1.0252, "low": 1.0248, "close": 1.025,
+        }
+
+        await engine._on_candle({**latest, "warmup_candles": warmup})
+        features = engine.compute_features("EURUSD", "1h", engine._candle_cache["EURUSD:1h"])
+
+        self.assertEqual(len(engine._candle_cache["EURUSD:1h"]), 26)
+        self.assertTrue(features["ema20"].is_valid)
+
 if __name__ == "__main__":
     unittest.main()

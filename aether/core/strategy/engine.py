@@ -2,8 +2,11 @@ import asyncio
 import hashlib
 import json
 import math
+import statistics
+import time
 from typing import Dict, List, Any, Optional
 from aether.core.strategy.base import Strategy
+from aether.core.strategy.builtin_profiles import build_default_strategies
 from aether.core.strategy.trend_following import TrendFollowingV1
 from aether.core.context.models import MarketContext
 from aether.core.features.base import FeatureValue
@@ -12,7 +15,9 @@ from aether.core.data.normalizer import NormalizedCandle
 
 class StrategyRegistry:
     def __init__(self):
-        self._strategies: Dict[str, Strategy] = {} 
+        self._strategies: Dict[str, Strategy] = {}
+        for strategy in build_default_strategies():
+            self.register(strategy)
 
     def register(self, strategy: Strategy):
         self._strategies[strategy.name] = strategy
@@ -60,6 +65,9 @@ class StrategyEngine:
         self._bus = None
         self._candle_cache: Dict[str, NormalizedCandle] = {}
         self._candle_history: Dict[str, Dict[int, NormalizedCandle]] = {}
+        self._quote_cache: Dict[str, Dict[str, Any]] = {}
+        self._quote_spread_history: Dict[str, List[float]] = {}
+        self._emitted_candle_keys: set[str] = set()
         # Cache for latest context and features per (symbol, timeframe)
         self._context_cache: Dict[str, Dict[str, Any]] = {}  # key: f"{symbol}:{timeframe}"
         self._features_cache: Dict[str, Dict[str, Any]] = {}
@@ -87,6 +95,38 @@ class StrategyEngine:
             "component": "strategy_engine"
         }
 
+    def symbol_readiness(self, symbol: str) -> Dict[str, Any]:
+        quote = self._quote_cache.get(symbol)
+        current_spread = self._finite_number((quote or {}).get("spread")) if quote else None
+        quote_age = None
+        if quote is not None:
+            quote_age = int(time.time()) - int(quote.get("timestamp", time.time()))
+        typical_spread = self._resolve_typical_spread(symbol)
+        max_multiplier = self._finite_number(self._config_value("validation.max_spread_multiplier", 2.0)) or 2.0
+        spread_ok = bool(
+            current_spread is not None
+            and current_spread > 0
+            and typical_spread is not None
+            and typical_spread > 0
+            and current_spread <= typical_spread * max_multiplier
+        )
+        ready = bool(quote is not None and spread_ok and (quote_age is None or quote_age <= int(self._config_value("validation.max_quote_age_seconds", 120))))
+        return {
+            "symbol": symbol,
+            "ready": ready,
+            "quote_available": quote is not None,
+            "quote_age_seconds": quote_age,
+            "current_spread": current_spread,
+            "typical_spread": typical_spread,
+            "reason": (
+                "fresh_quote_and_valid_spread" if ready else
+                "missing_quote" if quote is None else
+                "spread_unavailable" if typical_spread is None else
+                "stale_quote" if quote_age is not None and quote_age > int(self._config_value("validation.max_quote_age_seconds", 120)) else
+                "spread_too_wide"
+            ),
+        }
+
     async def metrics(self) -> dict:
         return {}
 
@@ -95,6 +135,7 @@ class StrategyEngine:
         self._bus = bus
         await bus.subscribe("context.updated", self._on_context_updated)
         await bus.subscribe("data.candle", self._on_candle)
+        await bus.subscribe("data.quote", self._on_quote)
         await bus.subscribe("features.calculated", self._on_features_calculated)
         await bus.subscribe("market.closed", self._on_market_closed)
         await bus.subscribe("market.opened", self._on_market_opened)
@@ -142,6 +183,75 @@ class StrategyEngine:
 
     def _make_key(self, symbol: str, timeframe: str) -> str:
         return f"{symbol}:{timeframe}"
+
+    async def _on_quote(self, event: Dict[str, Any]):
+        symbol = event.get("symbol")
+        bid = self._finite_number(event.get("bid"))
+        ask = self._finite_number(event.get("ask"))
+        try:
+            timestamp = int(event.get("timestamp"))
+        except (TypeError, ValueError):
+            return
+        max_age = self._config_value("validation.max_quote_age_seconds", 120)
+        now = int(time.time())
+        if (
+            not symbol
+            or bid is None
+            or ask is None
+            or bid <= 0
+            or ask < bid
+            or timestamp > now
+            or now - timestamp > max_age
+        ):
+            return
+        spread = ask - bid
+        self._quote_cache[symbol] = {
+            "bid": bid,
+            "ask": ask,
+            "spread": spread,
+            "timestamp": timestamp,
+            "source": event.get("source") or "unknown",
+        }
+        history = self._quote_spread_history.setdefault(symbol, [])
+        history.append(spread)
+        if len(history) > 200:
+            history[:] = history[-200:]
+        if len(self._quote_cache) > 500:
+            oldest = min(self._quote_cache, key=lambda key: self._quote_cache[key]["timestamp"])
+            del self._quote_cache[oldest]
+        for key in list(self._context_cache):
+            cached_symbol, timeframe = key.split(":", 1)
+            if cached_symbol == symbol and key in self._features_cache and self._snapshots_match(key):
+                await self._maybe_generate_signal(symbol, timeframe)
+
+    @staticmethod
+    def _finite_number(value):
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            return None
+        return number if math.isfinite(number) else None
+
+    def _config_value(self, path: str, default=None):
+        try:
+            value = self.config.get(path)
+            return default if value is None else value
+        except Exception:
+            return default
+
+    def _resolve_typical_spread(self, symbol: str) -> Optional[float]:
+        typical_spreads = self._config_value("validation.typical_spread_by_symbol", {}) or {}
+        configured = self._finite_number(typical_spreads.get(symbol))
+        if configured is not None and configured > 0:
+            return configured
+        history = self._quote_spread_history.get(symbol, [])
+        if not history:
+            return None
+        values = sorted(value for value in history if value is not None and value > 0)
+        if not values:
+            return None
+        sample = values[-min(len(values), 20):]
+        return float(statistics.median(sample))
 
     def _snapshots_match(self, key: str) -> bool:
         context_timestamp = self._context_timestamps.get(key)
@@ -272,11 +382,25 @@ class StrategyEngine:
         if context_timestamp is not None and candle.timestamp != context_timestamp:
             logger.warning("[StrategyEngine] candle snapshot mismatch for %s %s", symbol, timeframe)
             return
+        quote = self._quote_cache.get(symbol)
+        quote_max_age = int(self._config_value("validation.max_quote_age_seconds", 120))
+        if quote is None or int(time.time()) - quote["timestamp"] > quote_max_age:
+            return
+        typical_spread = self._resolve_typical_spread(symbol)
+        if typical_spread is None or typical_spread <= 0:
+            logger.warning("[StrategyEngine] no usable typical spread for %s; signal blocked", symbol)
+            return
         # Generate a candidate using the available candle.
         candidate = self.generate_candidate(symbol, timeframe, context, features, candle)
         if not candidate:
             logger.info("[StrategyEngine] no candidate generated for %s %s", symbol, timeframe)
             return
+        candle_signal_key = f"{key}:{candle.timestamp}"
+        if candle_signal_key in self._emitted_candle_keys:
+            return
+        candidate["current_spread"] = quote["spread"]
+        candidate["typical_spread"] = typical_spread
+        candidate["quote_snapshot"] = quote
         
         # Validate candidate via firewall
         validation = self.firewall.validate(candidate)
@@ -307,6 +431,8 @@ class StrategyEngine:
                 },
                 "direction": candidate["direction"],
                 "trade": trade,
+                "quote": quote,
+                "typical_spread": typical_spread,
             }
             signal_id, snapshot_hash = self._signal_identity(symbol, timeframe, snapshot)
             reason_tags = [f"direction_{candidate['direction'].lower()}"]
@@ -330,6 +456,8 @@ class StrategyEngine:
                 "source_candle_timestamp": candle.timestamp,
                 "context_snapshot": context_snapshot,
                 "feature_snapshot": feature_snapshot,
+                "quote_snapshot": quote,
+                "typical_spread": typical_spread,
                 "market_snapshot_hash": snapshot_hash,
                 "confidence": {
                     "raw": int(candidate["score"]),
@@ -344,6 +472,9 @@ class StrategyEngine:
                 "take_profit_price": trade.get("take_profit", {}).get("price"),
                 "expiry": trade.get("expiry"),
             }
+            self._emitted_candle_keys.add(candle_signal_key)
+            if len(self._emitted_candle_keys) > 2000:
+                self._emitted_candle_keys.clear()
             await self._bus.publish("signal.emitted", signal)
             logger.info("[StrategyEngine] emitted signal: %s", signal["signal_id"])
 

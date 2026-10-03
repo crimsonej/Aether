@@ -53,9 +53,29 @@ features:
   - rsi
   - macd
   - atr
+alerts:
+  price: []
+  news:
+    enabled: false
+    pairs: []
+    minimum_impact: high
+    source_url: https://nfs.faireconomy.media/ff_calendar_thisweek.json?version=aeceb15b7cc6540e3b9b210d81a0d39a
+    source_timezone: America/New_York
+    poll_interval_seconds: 300
+    lead_minutes: 60
+    source_candidates:
+    - https://nfs.faireconomy.media/ff_calendar_thisweek.json?version=aeceb15b7cc6540e3b9b210d81a0d39a
+    - https://nfs.faireconomy.media/ff_calendar_thisweek.csv?version=aeceb15b7cc6540e3b9b210d81a0d39a
+    - https://nfs.faireconomy.media/ff_calendar_thisweek.xml?version=aeceb15b7cc6540e3b9b210d81a0d39a
 model_manager:
   chain:
+  - Ollama
   - Local
+  ollama:
+    enabled: true
+    base_url: http://127.0.0.1:11434
+    model: nemotron-3-super:cloud
+    keep_alive: 5m
 ops:
   anomaly_detection: true
   auto_restart: true
@@ -64,11 +84,11 @@ providers: []
 schema_version: 1
 signal:
   mode: signal_only
-  operator_timezone: Africa/Kampala
-  profile: scalper
+  operator_timezone: null
+  profile: general
 strategies:
 - config_path: config/strategies/trend_following_v1.yaml
-  enabled: true
+  enabled: false
   name: trend_following_v1
 validation:
   cooldown:
@@ -77,9 +97,4 @@ validation:
     normal_volatility: 15
   max_spread_multiplier: 1.5
   min_confidence: 55
-watchlist:
-- EURUSD
-- GBPUSD
-- XAUUSD
-- BTCUSD
-- ETHUSD
+watchlist: []

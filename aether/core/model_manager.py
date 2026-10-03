@@ -391,6 +391,72 @@ class OpenRouterProvider(LLMProviderProtocol):
                             pass
 
 
+class OllamaProvider(LLMProviderProtocol):
+    """Optional local model provider using Ollama's native HTTP API."""
+    name = "Ollama"
+
+    def __init__(self, config: Optional[Dict[str, Any]] = None):
+        config = config or {}
+        self.base_url = str(config.get("base_url", "http://127.0.0.1:11434")).rstrip("/")
+        self.model = str(config.get("model", "" )).strip()
+        self.keep_alive = config.get("keep_alive", "5m")
+
+    async def ping(self) -> bool:
+        if not self.model:
+            return False
+        try:
+            timeout = aiohttp.ClientTimeout(total=3, connect=2)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.get(f"{self.base_url}/api/tags") as response:
+                    if response.status != 200:
+                        return False
+                    payload = await response.json()
+                    available = {item.get("name") for item in payload.get("models", [])}
+                    return self.model in available or f"{self.model}:latest" in available
+        except Exception:
+            return False
+
+    async def list_models(self) -> List[str]:
+        try:
+            timeout = aiohttp.ClientTimeout(total=5, connect=2)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.get(f"{self.base_url}/api/tags") as response:
+                    if response.status != 200:
+                        return []
+                    payload = await response.json()
+                    return [item["name"] for item in payload.get("models", []) if item.get("name")]
+        except Exception:
+            return []
+
+    async def stream(self, prompt: str) -> AsyncIterator[str]:
+        if not self.model:
+            raise RuntimeError("Ollama model is not configured")
+        timeout = aiohttp.ClientTimeout(total=180, connect=3)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.post(
+                f"{self.base_url}/api/chat",
+                json={
+                    "model": self.model,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "stream": True,
+                    "keep_alive": self.keep_alive,
+                },
+            ) as response:
+                response.raise_for_status()
+                async for line in response.content:
+                    if not line:
+                        continue
+                    try:
+                        payload = json.loads(line)
+                    except (TypeError, ValueError):
+                        continue
+                    text = payload.get("message", {}).get("content", "")
+                    if text:
+                        yield text
+                    if payload.get("done"):
+                        break
+
+
 class LocalProvider(LLMProviderProtocol):
     """Offline fallback – yields word tokens so the platform never hard-fails."""
     name = "Local"
@@ -418,7 +484,7 @@ class LocalProvider(LLMProviderProtocol):
 # ---------------------------------------------------------------------------
 
 class ModelManager:
-    DEFAULT_CHAIN = ["Claude", "OpenAI", "Gemini", "NVIDIA", "OpenRouter", "Local"]
+    DEFAULT_CHAIN = ["Ollama", "Claude", "OpenAI", "Gemini", "NVIDIA", "OpenRouter", "Local"]
     BACKOFF_SECONDS = 60
 
     _PROVIDER_CLASSES: Dict[str, type] = {
@@ -427,6 +493,7 @@ class ModelManager:
         "Gemini":     GeminiProvider,
         "NVIDIA":     NVIDIAProvider,
         "OpenRouter": OpenRouterProvider,
+        "Ollama":     OllamaProvider,
         "Local":      LocalProvider,
     }
 
@@ -452,9 +519,16 @@ class ModelManager:
         # Each provider exposes the env var name(s) it consults; we read them
         # directly and filter. Local always passes.
         keyed_providers: Dict[str, type] = {}
+        ollama_config = self._get_config("model_manager.ollama", {}) or {}
         for name, cls in self._PROVIDER_CLASSES.items():
             if name == "Local":
                 keyed_providers[name] = cls
+                continue
+            if name == "Ollama":
+                if isinstance(ollama_config, dict) and ollama_config.get("enabled", False):
+                    keyed_providers[name] = cls
+                else:
+                    logger.info("[ModelManager] Ollama is disabled")
                 continue
             # Instantiate transiently just to read the key, then drop it.
             tmp = cls()
@@ -462,11 +536,11 @@ class ModelManager:
                 keyed_providers[name] = cls
             else:
                 logger.info("[ModelManager] %s has no API key – removed from chain", name)
-        self.providers = {
-            name: cls()
-            for name, cls in keyed_providers.items()
-            if name in self.chain
-        }
+        self.providers = {}
+        for name, cls in keyed_providers.items():
+            if name not in self.chain:
+                continue
+            self.providers[name] = cls(ollama_config) if name == "Ollama" else cls()
         # Also trim the chain itself so generate() doesn't iterate over
         # providers we know are unconfigured.
         self.chain = [name for name in self.chain if name in self.providers]
@@ -485,6 +559,26 @@ class ModelManager:
                 results[name] = False
         return results
 
+    async def available_models(self, provider_name: str) -> List[str]:
+        provider = self.providers.get(provider_name)
+        if provider is None and provider_name == "Ollama":
+            config = self._get_config("model_manager.ollama", {}) or {}
+            provider = OllamaProvider(config)
+        if provider is None:
+            return []
+        try:
+            return await provider.list_models()
+        except Exception:
+            return []
+
+    async def register_events(self, bus) -> None:
+        await bus.subscribe("config_changed", self._on_config_changed)
+
+    async def _on_config_changed(self, event: Dict[str, Any]) -> None:
+        path = event.get("path", "")
+        if path == "model_manager.chain" or path.startswith("model_manager.ollama"):
+            await self.reload_providers()
+
     async def reload_providers(self) -> None:
         self.unhealthy.clear()
         self._init_providers()
@@ -499,6 +593,8 @@ class ModelManager:
         """
         try:
             if path == "model_manager.chain":
+                await self.reload_providers()
+            elif path.startswith("model_manager.ollama"):
                 await self.reload_providers()
         except Exception as exc:
             logger.exception("[ModelManager] failed to apply config update: %s", exc)
@@ -532,6 +628,13 @@ class ModelManager:
                 await self.bus.publish("model.fallback", {"from": name, "reason": "stream_error"})
                 logger.warning("[ModelManager] %s stream error: %s – falling back", name, exc)
         raise RuntimeError("All LLM providers failed or are in backoff")
+
+    def _get_config(self, path: str, default=None):
+        try:
+            value = self.config.get(path)
+            return default if value is None else value
+        except Exception:
+            return default
 
     async def start(self) -> None:
         logger.info("[ModelManager] started")

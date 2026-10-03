@@ -1,5 +1,6 @@
 from typing import Dict, List, Any
 import asyncio
+import math
 from aether.core.features.base import Indicator, FeatureValue
 from aether.core.data.normalizer import NormalizedCandle
 from aether.core.utils.logger import logger
@@ -108,34 +109,56 @@ class FeatureEngine:
             timeframe = event.get("timeframe")
             if not symbol or not timeframe or event.get("is_closed") is not True:
                 return
-            candle = NormalizedCandle(
-                symbol=symbol,
-                timeframe=timeframe,
-                open=event.get("open"),
-                high=event.get("high"),
-                low=event.get("low"),
-                close=event.get("close"),
-                volume=event.get("volume", 0.0),
-                timestamp=event.get("timestamp"),
-                close_time=event.get("close_time", event.get("timestamp")),
-                source=event.get("source") or "unknown",
-                is_closed=True,
-            )
             key = f"{symbol}:{timeframe}"
             history = self._candle_cache.setdefault(key, [])
-            if history and candle.timestamp < history[-1].timestamp:
-                logger.warning("[FeatureEngine] rejected out-of-order candle for %s %s", symbol, timeframe)
-                return
-            if history and candle.timestamp == history[-1].timestamp:
-                history[-1] = candle
-            else:
-                history.append(candle)
-            # Limit cache size to 300 to prevent memory leaks
-            if len(history) > 300:
-                del history[:-300]
-            self.cache.pop((symbol, timeframe, candle.timestamp), None)
+            for candle_payload in [*event.get("warmup_candles", []), event]:
+                candle = self._cache_closed_candle(key, history, candle_payload)
+                if candle is None and candle_payload is event:
+                    return
+                if candle is not None:
+                    self.cache.pop((symbol, timeframe, candle.timestamp), None)
         except Exception as e:
             logger.exception("[FeatureEngine] error in _on_candle: %s", e)
+
+    def _cache_closed_candle(self, key: str, history: List[NormalizedCandle], payload: Dict[str, Any]):
+        if not isinstance(payload, dict) or payload.get("is_closed") is not True:
+            return None
+        try:
+            candle = NormalizedCandle(
+                symbol=payload["symbol"],
+                timeframe=payload["timeframe"],
+                open=payload["open"],
+                high=payload["high"],
+                low=payload["low"],
+                close=payload["close"],
+                volume=payload.get("volume", 0.0),
+                timestamp=payload["timestamp"],
+                close_time=payload.get("close_time", payload["timestamp"]),
+                source=payload.get("source") or "unknown",
+                is_closed=True,
+            )
+        except Exception:
+            logger.warning("[FeatureEngine] rejected malformed candle history for %s", key)
+            return None
+        values = (candle.open, candle.high, candle.low, candle.close, candle.volume)
+        if (
+            not all(math.isfinite(value) for value in values)
+            or candle.volume < 0
+            or candle.low > min(candle.open, candle.close)
+            or candle.high < max(candle.open, candle.close)
+            or candle.low > candle.high
+        ):
+            logger.warning("[FeatureEngine] rejected invalid candle for %s", key)
+            return None
+        if history and candle.timestamp < history[-1].timestamp:
+            return None
+        if history and candle.timestamp == history[-1].timestamp:
+            history[-1] = candle
+        else:
+            history.append(candle)
+        if len(history) > 300:
+            del history[:-300]
+        return candle
 
     def compute_features(self, symbol: str, timeframe: str, candles: list) -> Dict[str, FeatureValue]:
         """Compute feature values for given candles using enabled indicators.

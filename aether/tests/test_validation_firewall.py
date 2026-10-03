@@ -84,15 +84,15 @@ class TestValidationFirewall(unittest.TestCase):
         self.assertIn("low_liquidity", result["warnings"])
         self.assertIn("excessive_spread", result["failed_checks"])
 
-    def test_missing_spread_is_explicitly_reported(self):
+    def test_missing_spread_measurement_is_rejected(self):
         payload = candidate()
         payload.pop("current_spread")
         payload.pop("typical_spread")
 
         result = self.firewall.validate(payload)
 
-        self.assertTrue(result["valid"])
-        self.assertIn("spread_data_unavailable", result["warnings"])
+        self.assertFalse(result["valid"])
+        self.assertIn("spread_data_unavailable", result["failed_checks"])
 
 
 if __name__ == "__main__":

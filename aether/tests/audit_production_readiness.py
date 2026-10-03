@@ -33,13 +33,13 @@ def record(section, test, passed, note=""):
 # ============================================================
 # SECTION 1 — AI Natural-Language Configuration Control
 # ============================================================
-async def audit_ai_config():
+async def audit_aether_agent():
     print("\n── 1. AI Natural-Language Configuration Control ──")
 
-    # 1a: AIConfigManager boots without LLM credentials
+    # 1a: AetherAgent boots without LLM credentials
     try:
         from aether.core.model_manager import ModelManager
-        from aether.core.ai_config_manager import AIConfigManager
+        from aether.core.agent import AetherAgent
         from aether.core.security.permission import PermissionEngine
         from aether.core.memory.conversation import ConversationMemory
         from aether.core.event_bus import EventBus
@@ -53,17 +53,17 @@ async def audit_ai_config():
         perm = PermissionEngine(ROOT / "config" / "permissions.yaml")
         conv = ConversationMemory("audit_session", ROOT)
         model = ModelManager(config, bus)
-        ai = AIConfigManager(model, config, perm, conv, bus=bus)
+        ai = AetherAgent(model, config, perm, conv, bus=bus)
         await ai.register_events(bus)
-        record("AI Config", "AIConfigManager boots without LLM credentials", True)
+        record("Aether Agent", "AetherAgent boots without LLM credentials", True)
         await bus.stop()
     except Exception as e:
-        record("AI Config", "AIConfigManager boots without LLM credentials", False, str(e))
+        record("Aether Agent", "AetherAgent boots without LLM credentials", False, str(e))
 
     # 1b: handle_user_command with all providers unhealthy → graceful failure to user
     try:
         from aether.core.model_manager import ModelManager, LLMProviderProtocol
-        from aether.core.ai_config_manager import AIConfigManager
+        from aether.core.agent import AetherAgent
         from aether.core.security.permission import PermissionEngine
         from aether.core.memory.conversation import ConversationMemory
         from aether.core.event_bus import EventBus
@@ -77,7 +77,7 @@ async def audit_ai_config():
         perm = PermissionEngine()
         conv = ConversationMemory("audit_all_fail", ROOT)
         model = ModelManager(config, bus)
-        ai = AIConfigManager(model, config, perm, conv, bus=bus)
+        ai = AetherAgent(model, config, perm, conv, bus=bus)
 
         responses = []
         async def fake_send(msg):
@@ -90,11 +90,11 @@ async def audit_ai_config():
         await ai.handle_user_command("disable EUR/USD strategy", "user123", "test")
 
         # We expect either a JSON parse error reply or a caught error reply, not an uncaught exception
-        record("AI Config", "All LLM providers fail → sends error reply to user, no crash", len(responses) > 0,
+        record("Aether Agent", "All reasoning providers fail → sends error reply to user, no crash", len(responses) > 0,
                f"responses={responses[:1]}")
         await bus.stop()
     except Exception as e:
-        record("AI Config", "All LLM providers fail → sends error reply to user, no crash", False, traceback.format_exc()[-300:])
+        record("Aether Agent", "All reasoning providers fail → sends error reply to user, no crash", False, traceback.format_exc()[-300:])
 
     # 1c: ConversationMemory persists and reloads across restarts
     try:
@@ -106,10 +106,10 @@ async def audit_ai_config():
         mem2 = ConversationMemory(session, ROOT)
         entries = mem2.recent(5)
         ok = any("EUR/USD" in e.get("text", "") for e in entries)
-        record("AI Config", "ConversationMemory persists across restart", ok,
+        record("Aether Agent", "ConversationMemory persists across restart", ok,
                f"entries={entries}")
     except Exception as e:
-        record("AI Config", "ConversationMemory persists across restart", False, str(e))
+        record("Aether Agent", "ConversationMemory persists across restart", False, str(e))
 
 
 # ============================================================
@@ -812,7 +812,7 @@ async def main():
     print(f"   OANDA_API_KEY set: {'OANDA_API_KEY' in os.environ}")
     print("=" * 60)
 
-    await audit_ai_config()
+    await audit_aether_agent()
     await audit_model_failover()
     await audit_streaming()
     await audit_retry_queue()
